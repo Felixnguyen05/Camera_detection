@@ -1,0 +1,13 @@
+
+# Allied Vision Manta G-125B/C Camera
+vmbpy
+
+# Computer Vision
+opencv-python
+numpy
+
+# Configuration
+PyYAML
+
+# Testing
+pytest
