@@ -46,10 +46,9 @@ def cam_image(cam):
 # area rectangle can be drawn. Add this function before while loop (perhaps
 # merge with query_init)
 #       Returns boxp (vector containing the 4 points to make the rectangles)
-def contour_n_bounding(train, query):
+def contour_n_bounding(query):
     boxp = []
     for i in range(len(query)):
-        for j in range(len(train)):
             __, img_upper = cv.threshold(query[i], 200, 255, cv.THRESH_BINARY) #thresholding to create binary image
             __, img_lower = cv.threshold(query[i], 110, 255, cv.THRESH_BINARY_INV) #thresholding to create binary image
             img_mask = cv.bitwise_or(img_upper, img_lower)
@@ -64,8 +63,8 @@ def contour_n_bounding(train, query):
                 cnt = max(comp_contours, key=cv.contourArea)
 
                 rect = cv.minAreaRect(cnt)
-                boxp[i][j] = cv.boxPoints(rect)
-                box = np.int32(boxp[i][j])
+                boxp[i] = cv.boxPoints(rect)
+                box = np.int32(boxp[i])
                 cv.drawContours(query[i],[box],0,(0,0,255),2)
             else:
                 print("No contours found")
@@ -122,14 +121,15 @@ def image_results(train, query, qkp, tkp, good):
 #           (Figure out what src_pts, pts, and dst do!)
 def homography(good, qkp, tkp, query, train, boxp):
     imgResults = []
-    h,w = query[0].shape[:2]
     
     for i in range(len(query)):
+        h,w = query[i].shape[:2]
+
         for j in range(len(train)):
             imgResults.append([])
             imgResults[i].append([])
-
-            if len(good[i][j])>=MIN_MATCH_COUNT and boxp[i][j] is not None:
+            
+            if len(good[i][j])>=MIN_MATCH_COUNT and boxp[i] is not None:
                 src_pts = np.float32([ qkp[i][m[0].queryIdx].pt for m in good[i][j] ]).reshape(-1,1,2)
                 dst_pts = np.float32([ tkp[j][m[0].trainIdx].pt for m in good[i][j] ]).reshape(-1,1,2)
                 M, mask = cv.findHomography(src_pts, dst_pts, cv.RANSAC, 5.0)
@@ -137,7 +137,7 @@ def homography(good, qkp, tkp, query, train, boxp):
                 # Check whether a valid homography matrix was found
                 if M is not None:
                     matchesMask = [[val] for val in mask.ravel().tolist()]
-                    pts = np.float32(boxp[i][j]).reshape(-1,1,2)
+                    pts = np.float32(boxp[i]).reshape(-1,1,2)
 
                     dst = cv.perspectiveTransform(pts,M) 
                     dst += (w, 0)  # adding offset 
@@ -150,7 +150,7 @@ def homography(good, qkp, tkp, query, train, boxp):
                     # Draw connecting lines then draw bounding box in red
                     imgResults[i][j] = cv.drawMatchesKnn(query[i],qkp[i],train[j],tkp[j],good[i][j], None,**draw_params)
                     imgResults[i][j] = cv.polylines(imgResults[i][j], [np.int32(dst)], True, (0,0,255),3, cv.LINE_AA)
-                    
+
                 else:
                     # draw images without connections side-by-side to prevent crashing
                     imgResults[i][j] = cv.drawMatchesKnn(query[i], qkp[i], train[j], tkp[j], [], None, flags=2)
@@ -160,13 +160,30 @@ def homography(good, qkp, tkp, query, train, boxp):
                 # draw images without connections side-by-side to prevent crashing
                 imgResults[i][j] = cv.drawMatchesKnn(query[i], qkp[i], train[j], tkp[j], [], None, flags=2)
 
-            plt.subplot(len(query), len(train), i * len(train) + j + 1)
-            plt.imshow(imgResults[i][j], cmap='gray')
-            plt.axis('off')
+            
+    # TILE_W, TILE_H = 500, 250  # Standard size for each grid cell
+    TILE_W, TILE_H = round(1530 / len(train)), round(830 / len(query))  # Size dependent on the amount of query and train images
+    grid_rows = []
+
+    for i in range(len(query)):
+        row_imgs = []
+        for j in range(len(train)):
+            # Resize each result so all tiles have identical dimensions
+            row_imgs.append(cv.resize(imgResults[i][j], (TILE_W, TILE_H)))
+            
+        # Stack all train columns horizontally for this query row
+        grid_rows.append(np.hstack(row_imgs))
+
+    # Stack all query rows vertically into one master grid image
+    final_grid = np.vstack(grid_rows)
+    cv.imshow("Homography Grid", final_grid)
 
 # Main
 def main():
     qkp, qdes, query, sift = query_init()
+
+    # get contours and bounding boxes of query images
+    boxp = contour_n_bounding(query)
 
     with VmbSystem.get_instance() as vmb:
         cams = vmb.get_all_cameras()
@@ -182,18 +199,13 @@ def main():
                 if end - start > SPP:
                     frameCV = cam_image(cam)
                     start = time.time()
+                    #cv.destroyAllWindows()
 
                 # train images / camera feed
                 # and feature finding of these images
                 train = [
-                    #frameCV,
-                    cv.imread('Test_images/Plates1.png',cv.IMREAD_GRAYSCALE), 
-                    cv.imread('Test_images/WhiteA6.png',cv.IMREAD_GRAYSCALE), 
-                    cv.imread('Test_images/WhiteA1.png',cv.IMREAD_GRAYSCALE)
+                    cv.imread('Test_images/Multi1.png',cv.IMREAD_GRAYSCALE)
                 ]
-
-                # get contours and bounding boxes of query images
-                boxp = contour_n_bounding(train, query)
 
                 tkp = []
                 tdes = []
@@ -207,7 +219,7 @@ def main():
 
                 # find homography, and draw respective boxes
                 homography(good, qkp, tkp, query, train, boxp)
-                plt.show()    
+                #plt.show()    
             
                 #image = imgResults[0][0]
                 #cv.imshow('Feature Matching', image)
