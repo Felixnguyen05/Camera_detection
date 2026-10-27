@@ -8,6 +8,7 @@ from vmbpy import *
 MIN_MATCH_COUNT = 10
 Lowes_ratio = 0.6 # Test changing the ratio?
 SPP = 2 # Second(s) per picture
+Match_Num = 5 # Max number of matches
 
 # Initiates query images, initiates sift and finds the features of query images
 #       Returns qkp, qdes, query, sift (features, vector of images, sift function)
@@ -85,16 +86,20 @@ def matcher(train_var, query, qdes, tdes):
             matches[i].append([])
 
             if qdes[i] is not None and tdes[j] is not None:
-                matches[i][j] = bf.knnMatch(qdes[i],tdes[j],k=2)
+                matches[i][j] = bf.knnMatch(qdes[i],tdes[j],k=Match_Num)
             else:
                 matches[i][j] = []
 
             # checking which matches are good based on Lowe's ratio test
+            # comparing matches with last match in the group
             good.append([])
             good[i].append([])
-            for m,n in matches[i][j]:
-                if m.distance < Lowes_ratio*n.distance:
-                    good[i][j].append([m])
+            for n in matches[i][j]:
+                if len(n) == Match_Num:
+                    # Check the top matches against the last (n[-1])
+                    for m in n[:-1]:
+                        if m.distance < Lowes_ratio * n[-1].distance:
+                            good[i][j].append([m])
     return good
 
 # Draws the good matches onto the image, 
@@ -121,44 +126,58 @@ def image_results(train, query, qkp, tkp, good):
 #           (Figure out what src_pts, pts, and dst do!)
 def homography(good, qkp, tkp, query, train, boxp):
     imgResults = []
-    
+    matched_boxes = []
     for i in range(len(query)):
         h,w = query[i].shape[:2]
 
         for j in range(len(train)):
             imgResults.append([])
             imgResults[i].append([])
-            
-            if len(good[i][j])>=MIN_MATCH_COUNT and boxp[i] is not None:
-                src_pts = np.float32([ qkp[i][m[0].queryIdx].pt for m in good[i][j] ]).reshape(-1,1,2)
-                dst_pts = np.float32([ tkp[j][m[0].trainIdx].pt for m in good[i][j] ]).reshape(-1,1,2)
-                M, mask = cv.findHomography(src_pts, dst_pts, cv.RANSAC, 5.0)
 
-                # Check whether a valid homography matrix was found
-                if M is not None:
-                    matchesMask = [[val] for val in mask.ravel().tolist()]
-                    pts = np.float32(boxp[i]).reshape(-1,1,2)
+            matching_img = train[j].copy()
 
-                    dst = cv.perspectiveTransform(pts,M) 
-                    dst += (w, 0)  # adding offset 
+            for k in range(Match_Num):
 
-                    draw_params = dict(matchColor = (0,255,0), # draw matches in green color
-                                    singlePointColor = None,
-                                    matchesMask = matchesMask, # draw only inliers
-                                    flags = 2)
+                if len(good[i][j])>=MIN_MATCH_COUNT and boxp[i] is not None:
+                    src_pts = np.float32([ qkp[i][m[0].queryIdx].pt for m in good[i][j] ]).reshape(-1,1,2)
+                    dst_pts = np.float32([ tkp[j][m[0].trainIdx].pt for m in good[i][j] ]).reshape(-1,1,2)
+                    M, mask = cv.findHomography(src_pts, dst_pts, cv.RANSAC, 5.0)
 
-                    # Draw connecting lines then draw bounding box in red
-                    imgResults[i][j] = cv.drawMatchesKnn(query[i],qkp[i],train[j],tkp[j],good[i][j], None,**draw_params)
-                    imgResults[i][j] = cv.polylines(imgResults[i][j], [np.int32(dst)], True, (0,0,255),3, cv.LINE_AA)
+                    # Check whether a valid homography matrix was found
+                    if M is not None:
+                        matchesMask = [[val] for val in mask.ravel().tolist()]
+                        pts = np.float32(boxp[i]).reshape(-1,1,2)
 
+                        dst = cv.perspectiveTransform(pts,M) 
+                        matched_boxes.append(dst)
+                        draw_dst = dst + (w, 0) # adding offset for drawing
+
+                        draw_params = dict(matchColor = (0,255,0), # draw matches in green color
+                                        singlePointColor = None,
+                                        matchesMask = matchesMask, # draw only inliers
+                                        flags = 2)
+
+                        # Draw connecting lines then draw bounding box in red
+                        imgResults[i][j] = cv.drawMatchesKnn(query[i],qkp[i], train[j], tkp[j],good[i][j], None,**draw_params)
+                        imgResults[i][j] = cv.polylines(imgResults[i][j], [np.int32(draw_dst)], True, (0,0,255),3, cv.LINE_AA)
+
+                        
+                        matching_img2 = matching_img.copy()
+                        mask = np.ones_like(matching_img) * 255
+                        cv.fillPoly(mask, [np.int32(dst)], 0)
+                        mask = cv.bitwise_not(mask)
+                        #cv.imshow("mask", mask)
+                        matching_img = cv.inpaint(matching_img2, mask, 3, cv.INPAINT_TELEA)
+                        #cv.imshow("matching img", matching_img)
+
+                    else:
+                        # draw images without connections side-by-side to prevent crashing
+                        imgResults[i][j] = cv.drawMatchesKnn(query[i], qkp[i], train[j], tkp[j], [], None, flags=2)
                 else:
+                    print( "Not enough matches found OR boxp is empty")
+
                     # draw images without connections side-by-side to prevent crashing
                     imgResults[i][j] = cv.drawMatchesKnn(query[i], qkp[i], train[j], tkp[j], [], None, flags=2)
-            else:
-                print( "Not enough matches found OR boxp is empty")
-
-                # draw images without connections side-by-side to prevent crashing
-                imgResults[i][j] = cv.drawMatchesKnn(query[i], qkp[i], train[j], tkp[j], [], None, flags=2)
 
             
     # TILE_W, TILE_H = 500, 250  # Standard size for each grid cell
@@ -177,6 +196,8 @@ def homography(good, qkp, tkp, query, train, boxp):
     # Stack all query rows vertically into one master grid image
     final_grid = np.vstack(grid_rows)
     cv.imshow("Homography Grid", final_grid)
+
+    
 
 # Main
 def main():
