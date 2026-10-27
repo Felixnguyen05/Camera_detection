@@ -8,7 +8,7 @@ from vmbpy import *
 MIN_MATCH_COUNT = 10
 Lowes_ratio = 0.6 # Test changing the ratio?
 SPP = 2 # Second(s) per picture
-Match_Num = 5 # Max number of matches
+Match_num = 5 # Max number of same type components in a picture
 
 # Initiates query images, initiates sift and finds the features of query images
 #       Returns qkp, qdes, query, sift (features, vector of images, sift function)
@@ -85,18 +85,18 @@ def matcher(train_var, query, qdes, tdes):
             matches.append([])
             matches[i].append([])
 
-            if qdes[i] is not None and tdes[j] is not None:
-                matches[i][j] = bf.knnMatch(qdes[i],tdes[j],k=Match_Num)
+            # Change k=2 to k=5 so a single query feature can match multiple objects
+            if qdes[i] is not None and tdes[j] is not None and len(tdes[j]) >= Match_num:
+                matches[i][j] = bf.knnMatch(qdes[i], tdes[j], k=Match_num)
             else:
                 matches[i][j] = []
 
-            # checking which matches are good based on Lowe's ratio test
-            # comparing matches with last match in the group
+            # Compare candidate matches against the last match in the group
             good.append([])
             good[i].append([])
             for n in matches[i][j]:
-                if len(n) == Match_Num:
-                    # Check the top matches against the last (n[-1])
+                if len(n) == Match_num:
+                    # Check the top matches against the 5th match (match_group[-1])
                     for m in n[:-1]:
                         if m.distance < Lowes_ratio * n[-1].distance:
                             good[i][j].append([m])
@@ -124,19 +124,35 @@ def image_results(train, query, qkp, tkp, good):
 # Also plots and displays resulting images on a grid (Makes 
 # image_results redundant)
 #           (Figure out what src_pts, pts, and dst do!)
-def homography(good, qkp, tkp, query, train, boxp):
+def homography(qkp, tkp, query, train, boxp, qdes, tdes):
     imgResults = []
-    matched_boxes = []
+    matches = []
+    good = []
+    bf = cv.BFMatcher()
+
     for i in range(len(query)):
         h,w = query[i].shape[:2]
 
         for j in range(len(train)):
             imgResults.append([])
             imgResults[i].append([])
+            good.append([])
+            good[i].append([])
+            for k in range(Match_num):
 
-            matching_img = train[j].copy()
+                # Change k so a single query feature can match multiple objects
+                if qdes[i] is not None and tdes[j] is not None and len(tdes[j]) >= Match_num:
+                    matches = bf.knnMatch(qdes[i], tdes[j], k=Match_num)
+                else:
+                    matches = []
 
-            for k in range(Match_Num):
+                # Compare candidate matches against the last match in the group
+                for n in matches:
+                    if len(n) == Match_num:
+                        # Check the top matches against the 5th match (match_group[-1])
+                        for m in n[:-1]:
+                            if m.distance < Lowes_ratio * n[-1].distance:
+                                good[i][j].append([m])
 
                 if len(good[i][j])>=MIN_MATCH_COUNT and boxp[i] is not None:
                     src_pts = np.float32([ qkp[i][m[0].queryIdx].pt for m in good[i][j] ]).reshape(-1,1,2)
@@ -149,8 +165,15 @@ def homography(good, qkp, tkp, query, train, boxp):
                         pts = np.float32(boxp[i]).reshape(-1,1,2)
 
                         dst = cv.perspectiveTransform(pts,M) 
-                        matched_boxes.append(dst)
-                        draw_dst = dst + (w, 0) # adding offset for drawing
+
+                        matching_img = train[j].copy()
+                        mask = np.ones_like(matching_img) * 255
+                        cv.fillPoly(mask, [np.int32(dst)], 0)
+                        mask = cv.bitwise_not(mask)
+                        train[j] = cv.inpaint(train[j], mask, 3, cv.INPAINT_TELEA)
+                        cv.imshow("masked train", train[j])
+
+                        draw_dst = dst + (w, 0)  # adding offset 
 
                         draw_params = dict(matchColor = (0,255,0), # draw matches in green color
                                         singlePointColor = None,
@@ -158,17 +181,8 @@ def homography(good, qkp, tkp, query, train, boxp):
                                         flags = 2)
 
                         # Draw connecting lines then draw bounding box in red
-                        imgResults[i][j] = cv.drawMatchesKnn(query[i],qkp[i], train[j], tkp[j],good[i][j], None,**draw_params)
+                        imgResults[i][j] = cv.drawMatchesKnn(query[i],qkp[i],train[j],tkp[j],good[i][j], None,**draw_params)
                         imgResults[i][j] = cv.polylines(imgResults[i][j], [np.int32(draw_dst)], True, (0,0,255),3, cv.LINE_AA)
-
-                        
-                        matching_img2 = matching_img.copy()
-                        mask = np.ones_like(matching_img) * 255
-                        cv.fillPoly(mask, [np.int32(dst)], 0)
-                        mask = cv.bitwise_not(mask)
-                        #cv.imshow("mask", mask)
-                        matching_img = cv.inpaint(matching_img2, mask, 3, cv.INPAINT_TELEA)
-                        #cv.imshow("matching img", matching_img)
 
                     else:
                         # draw images without connections side-by-side to prevent crashing
@@ -196,8 +210,6 @@ def homography(good, qkp, tkp, query, train, boxp):
     # Stack all query rows vertically into one master grid image
     final_grid = np.vstack(grid_rows)
     cv.imshow("Homography Grid", final_grid)
-
-    
 
 # Main
 def main():
@@ -236,10 +248,10 @@ def main():
                     tkp[n], tdes[n] = sift.detectAndCompute(train[n],None)
 
                 # find good matches
-                good = matcher(train, query, qdes, tdes)
+                #good = matcher(train, query, qdes, tdes)
 
                 # find homography, and draw respective boxes
-                homography(good, qkp, tkp, query, train, boxp)
+                homography( qkp, tkp, query, train, boxp, qdes, tdes)
                 #plt.show()    
             
                 #image = imgResults[0][0]
