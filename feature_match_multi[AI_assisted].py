@@ -148,21 +148,36 @@ def homography(qkp, query, train, boxp, qdes, sift):
     good = []
     bf = cv.BFMatcher()
     matched_boxes = []
+    cx = []
+    cy = []
+    total_result = []
 
     tkp = []
     tdes = []
 
-    display_image = train[0].copy()  
+    # Create copies of the train images to draw the bounding
+    # boxes of all the components at the end.
+    display_image = []
+    for j in range(len(train)):
+        display_image.append(train[j].copy()) 
 
+    # loop through all the query images
     for i in range(len(query)):
-        h,w = query[i][0].shape[:2]
+        h,w = query[i][0].shape[:2] 
+        cx.append([])
+        cy.append([])
 
+        # loop through all the training images
         for j in range(len(train)):
             imgResults.append([])
             imgResults[i].append([])
             good.append([])
             good[i].append([])
+            matched_boxes.append([])
+            cx[i].append([])
+            cy[i].append([])
 
+            # loop for multiple components of the same type
             for k in range(Match_num):
                 good[i][j].clear()
                 tkp.append([])
@@ -217,15 +232,38 @@ def homography(qkp, query, train, boxp, qdes, sift):
                             # dst_area/box_area gives the ratio of the query bounding box to the train bounding box
                             # this should fit between the MIN and MAX established
                         break # ENDOF AI assisted coding 
+
+                    Moment = cv.moments(dst)
+                    cx[i][j].append(int(Moment['m10']/Moment['m00']))
+                    cy[i][j].append(int(Moment['m01']/Moment['m00']))
+                    print(f"dst cx ={cx[i][j][k]} dst cy ={cy[i][j][k]}")
                     
                     matchesMask = [[val] for val in ransac_mask.ravel().tolist()]
                     pts = np.float32(boxp[i]).reshape(-1,1,2)
 
                     dst = cv.perspectiveTransform(pts,M) 
-                    matched_boxes.append(dst)
+                    matched_boxes[j].append(dst)
 
-                    # Fill in image after finding match, so that it is not in
-                    # the way of other components of the same type
+                    total_result = [
+                        matched_boxes,
+                        [cx, cy]
+                    ]
+
+                    """ 
+                    total_result = [
+                        [0] = matched_boxes, coordinate points for drawing bounding boxes
+                        [0][n] = n contains all the boxes in an image
+
+                        [1] = [cx, cy], array containing the center point coordinates
+                        [1][n] = array containing all the coordinates in the respective axis  (0 is cx, 1 is cy)
+                        [1][n][i] = array containing all the center points in an image
+                        [1][n][i][j] = specific point 
+
+                        Sorry to whoever has to look through this mess <3
+                    ] """
+
+                    # Fill area of component in image after finding match, so that
+                    # it is not in the way of other components of the same type.
                     matching_img = train[j].copy()
                     inpaint_mask = np.ones_like(matching_img) * 255
                     cv.fillPoly(inpaint_mask, [np.int32(dst)], 0)
@@ -233,7 +271,10 @@ def homography(qkp, query, train, boxp, qdes, sift):
                     train[j] = cv.inpaint(train[j], inpaint_mask, 3, cv.INPAINT_TELEA)
                     cv.imshow("masked train", train[j])
 
+                    # Showing step by step how the program works, should be
+                    # commented out during operation
                     draw_dst = dst + (w, 0)  # adding offset 
+                    draw_cx = cx[i][j][k] + w # adding offset
 
                     draw_params = dict(matchColor = (0,255,0), # draw matches in green color
                                     singlePointColor = None,
@@ -241,10 +282,11 @@ def homography(qkp, query, train, boxp, qdes, sift):
                                     flags = 2)
 
                     # Draw connecting lines then draw bounding box in red
-                    imgResults[i][j] = cv.drawMatchesKnn(query[i][0],qkp[i],train[j],tkp[j],good[i][j], None,**draw_params)
-                    imgResults[i][j] = cv.polylines(imgResults[i][j], [np.int32(draw_dst)], True, (0,0,255),3, cv.LINE_AA)
-                    plt.imshow(imgResults[i][j], cmap='gray')
-                    plt.show()
+                    #imgResults[i][j] = cv.drawMatchesKnn(query[i][0],qkp[i],train[j],tkp[j],good[i][j], None,**draw_params)
+                    #imgResults[i][j] = cv.polylines(imgResults[i][j], [np.int32(draw_dst)], True, (0,0,255),3, cv.LINE_AA)
+                    #cv.circle(imgResults[i][j], (int(draw_cx), int(cy[i][j][k])), 20, (255, 0, 0), -1)
+                    #plt.imshow(imgResults[i][j], cmap='gray')
+                    #plt.show()
 
                 else:
                     break # not enough matches, check next image
@@ -269,10 +311,33 @@ def homography(qkp, query, train, boxp, qdes, sift):
     cv.imshow("Homography Grid", final_grid)"""
     # ENDOF AI assisted coding
 
-    for box in matched_boxes:
-        cv.polylines(display_image, [np.int32(box)], True, (0, 255, 0), 3, cv.LINE_AA)
+    # Draws bounding boxes on respective train images
+    for j in range(len(train)):
+        for box in total_result[0][j]:
+            cv.polylines(display_image[j], [np.int32(box)], True, (0, 255, 0), 3, cv.LINE_AA)
 
-    plt.imshow(display_image)
+    # Prints out the coordinates of the center points of each component type
+    for i in range(len(query)):
+        print(f"query {i} contains points {total_result[1][0][i]}")
+        if len(total_result[1][0][i]) is None:
+            print(f"this query is EMPTY")
+
+    # 1 -> 0 -> i -> cntr 
+    for j in range(len(train)):
+            for i in range(len(query)):
+                for cntr in range(len(total_result[1][0][i][j])):
+                    if total_result[1][1][i][j][cntr] is not None:
+                        cv.circle(display_image[j], (total_result[1][0][i][j][cntr], total_result[1][1][i][j][cntr]), 20, (255, 0, 0), -1)
+
+
+    # Plot display images on a grid dependent on the amount of query and train images
+    for i in range(len(query)):
+        for j in range(len(train)):
+            plt.subplot(len(query), len(train), i * len(train) + j + 1)
+            plt.imshow(display_image[j], cmap='gray')
+            plt.axis('off')
+
+    #plt.imshow(display_image, cmap='gray')
     plt.show()
 
 # Main
@@ -307,7 +372,6 @@ def main():
                     cv.imread('Test_images/Multi1.png',cv.IMREAD_GRAYSCALE)
                 ]
 
-                
                 # find good matches
                 #good = matcher(train, query, qdes, tdes)
 
