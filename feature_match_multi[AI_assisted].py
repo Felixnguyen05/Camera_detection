@@ -87,50 +87,95 @@ def contour_n_bounding(query):
 # Checks features of the query and train images for matches
 # Also checks which matches are good based on Lowe's ratio test
 #       Returns good (vector containing good matches)
-def matcher(train_var, query, qdes, tdes):
+def matcher(qdes, sift, train, i, j):
     matches = []
     good = []
     bf = cv.BFMatcher()
+    tkp = []
+    tdes = []
 
-    for i in range(len(query)):
-        for j in range(len(train_var)):
-            matches.append([])
-            matches[i].append([])
 
-            # Change k=2 to k=5 so a single query feature can match multiple objects
-            if qdes[i] is not None and tdes[j] is not None and len(tdes[j]) >= Match_num:
-                matches[i][j] = bf.knnMatch(qdes[i], tdes[j], k=Match_num)
-            else:
-                matches[i][j] = []
+    tkp, tdes = sift.detectAndCompute(train[j],None)
 
-            # Compare candidate matches against the last match in the group
-            good.append([])
-            good[i].append([])
-            for n in matches[i][j]:
-                if len(n) == Match_num:
-                    # Check the top matches against the 5th match (match_group[-1])
-                    for m in n[:-1]:
-                        if m.distance < Lowes_ratio * n[-1].distance:
-                            good[i][j].append([m])
-    return good
+
+    # Change k=2 to k=5 so a single query feature can match multiple objects
+    if qdes is not None and tdes is not None and len(tdes) >= Match_num:
+        matches = bf.knnMatch(qdes[i], tdes, k=Match_num)
+    else:
+        matches = []
+
+    # STARTOF AI assisted coding - Adding the ability to match multiple of
+    # the same type of components. Unsuccesful, but solution does lead to 
+    # increased accuracy in the resulting bounding boxes, thus kept.
+
+    # Compare candidate matches against the last match in the group
+    for n in matches:
+        if len(n) == Match_num:
+            # Check the top matches against the 5th match (match_group[-1])
+            for m in n[:-1]:
+                if m.distance < Lowes_ratio * n[-1].distance:
+                    good.append([m]) #ENDOF AI assisted coding
+    return good, tkp
 
 # Draws the good matches onto the image, 
 # then plots them in a grid
-def image_results(train, query, qkp, tkp, good):
-    imgResults = []
+def image_results(train, query, total_result):
+# Create copies of the train images to draw the bounding
+    # boxes of all the components at the end.
+    display_image = []
+    for j in range(len(train)):
+        display_image.append(train[j].copy()) 
+    
+    # STARTOF AI assisted coding, displaying images on a grid using opencv
+    # instead of matplotlib which is what was used prior.       
+    """# TILE_W, TILE_H = 500, 250  # Standard size for each grid cell
+    TILE_W, TILE_H = round(1530 / len(train)), round(830 / len(query))  # Size dependent on the amount of query and train images
+    grid_rows = []
 
     for i in range(len(query)):
+        row_imgs = []
         for j in range(len(train)):
-            imgResults.append([])
-            imgResults[i].append([])
-            imgResults[i][j] = cv.drawMatchesKnn(query[i][0],qkp[i],train[j],tkp[j],good[i][j],None,flags=cv.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+            # Resize each result so all tiles have identical dimensions
+            row_imgs.append(cv.resize(imgResults[i][j], (TILE_W, TILE_H)))
             
-            #
-            #Plotting all results in a grid
-            #
+        # Stack all train columns horizontally for this query row
+        grid_rows.append(np.hstack(row_imgs))
+
+    # Stack all query rows vertically into one master grid image
+    final_grid = np.vstack(grid_rows)
+    cv.imshow("Homography Grid", final_grid)"""
+    # ENDOF AI assisted coding
+
+    # Draws bounding boxes on respective train images
+    for j in range(len(train)):
+        for box in total_result[0][j]:
+            cv.polylines(display_image[j], [np.int32(box)], True, (0, 255, 0), 3, cv.LINE_AA)
+
+    # Prints out the coordinates of the center points of each component type
+    for i in range(len(query)):
+        print(f"query {i} contains points {total_result[1][0][i]}")
+        if len(total_result[1][0][i]) is None:
+            print(f"this query is EMPTY")
+
+    
+    for j in range(len(train)):
+            for i in range(len(query)):
+                for cntr in range(len(total_result[1][0][i][j])):
+                    if total_result[1][1][i][j][cntr] is not None:
+                        cv.circle(display_image[j], 
+                                    (total_result[1][0][i][j][cntr], 
+                                    total_result[1][1][i][j][cntr]), 20, (255, 0, 0), -1)
+
+
+    # Plot display images on a grid dependent on the amount of query and train images
+    for i in range(len(query)):
+        for j in range(len(train)):
             plt.subplot(len(query), len(train), i * len(train) + j + 1)
-            plt.imshow(imgResults[i][j], cmap='gray')
+            plt.imshow(display_image[j], cmap='gray')
             plt.axis('off')
+
+    #plt.imshow(display_image, cmap='gray')
+    plt.show()
 
 # Finds homography and draws the correspondent bounding box.
 # Also plots and displays resulting images on a grid (Makes 
@@ -144,22 +189,10 @@ def image_results(train, query, qkp, tkp, good):
 #
 def homography(qkp, query, train, boxp, qdes, sift):
     imgResults = []
-    matches = []
-    good = []
-    bf = cv.BFMatcher()
     matched_boxes = []
     cx = []
     cy = []
-    total_result = []
-
-    tkp = []
-    tdes = []
-
-    # Create copies of the train images to draw the bounding
-    # boxes of all the components at the end.
-    display_image = []
-    for j in range(len(train)):
-        display_image.append(train[j].copy()) 
+    total_result = []    
 
     # loop through all the query images
     for i in range(len(query)):
@@ -171,40 +204,18 @@ def homography(qkp, query, train, boxp, qdes, sift):
         for j in range(len(train)):
             imgResults.append([])
             imgResults[i].append([])
-            good.append([])
-            good[i].append([])
             matched_boxes.append([])
             cx[i].append([])
             cy[i].append([])
 
             # loop for multiple components of the same type
             for k in range(Match_num):
-                good[i][j].clear()
-                tkp.append([])
-                tdes.append([])
-                tkp[j], tdes[j] = sift.detectAndCompute(train[j],None)
+                #
+                good, tkp = matcher(qdes,  sift,  train, i, j)
 
-                # Change k value to Match_num so a single query feature can match multiple objects
-                if qdes[i] is not None and tdes[j] is not None and len(tdes[j]) >= Match_num:
-                    matches = bf.knnMatch(qdes[i], tdes[j], k=Match_num)
-                else:
-                    matches = []
-
-                # STARTOF AI assisted coding - Adding the ability to match multiple of
-                # the same type of components. Unsuccesful, but solution does lead to 
-                # increased accuracy in the resulting bounding boxes, thus kept.
-
-                # Compare candidate matches against the last match in the group
-                for n in matches:
-                    if len(n) == Match_num:
-                        # Check the top matches against the 5th match (match_group[-1])
-                        for m in n[:-1]:
-                            if m.distance < Lowes_ratio * n[-1].distance:
-                                good[i][j].append([m]) #ENDOF AI assisted coding
-
-                if len(good[i][j])>=MIN_MATCH_COUNT and boxp[i] is not None:
-                    src_pts = np.float32([ qkp[i][m[0].queryIdx].pt for m in good[i][j] ]).reshape(-1,1,2)
-                    dst_pts = np.float32([ tkp[j][m[0].trainIdx].pt for m in good[i][j] ]).reshape(-1,1,2)
+                if len(good)>=MIN_MATCH_COUNT and boxp[i] is not None:
+                    src_pts = np.float32([ qkp[i][m[0].queryIdx].pt for m in good ]).reshape(-1,1,2)
+                    dst_pts = np.float32([ tkp[m[0].trainIdx].pt for m in good ]).reshape(-1,1,2)
                     M, ransac_mask = cv.findHomography(src_pts, dst_pts, cv.RANSAC, 5.0)
 
                     if M is None:
@@ -216,7 +227,6 @@ def homography(qkp, query, train, boxp, qdes, sift):
 
                     # Only count matches RANSAC considers consistent with the homography
                     n_inliers = int(ransac_mask.sum())
-                    print(f"query {i} / train {j} / pass {k}: {n_inliers} inliers")
                     if n_inliers < MIN_INLIERS:
                         break   # nothing real left to find, stop searching this train image
 
@@ -255,9 +265,10 @@ def homography(qkp, query, train, boxp, qdes, sift):
                         [0][n] = n contains all the boxes in an image
 
                         [1] = [cx, cy], array containing the center point coordinates
-                        [1][n] = array containing all the coordinates in the respective axis  (0 is cx, 1 is cy)
-                        [1][n][i] = array containing all the center points in an image
-                        [1][n][i][j] = specific point 
+                        [1][a] = array containing all the coordinates in the respective axis  (0 is cx, 1 is cy)
+                        [1][a][i] = array containing all the center points from a query
+                        [1][a][i][j] = array containing all the center points in a train image from a specific query
+                        [1][a][i][j][n] = coordinate of 1 component of a component type in an image
 
                         Sorry to whoever has to look through this mess <3
                     ] """
@@ -273,7 +284,7 @@ def homography(qkp, query, train, boxp, qdes, sift):
 
                     # Showing step by step how the program works, should be
                     # commented out during operation
-                    draw_dst = dst + (w, 0)  # adding offset 
+                    """ draw_dst = dst + (w, 0)  # adding offset 
                     draw_cx = cx[i][j][k] + w # adding offset
 
                     draw_params = dict(matchColor = (0,255,0), # draw matches in green color
@@ -282,63 +293,17 @@ def homography(qkp, query, train, boxp, qdes, sift):
                                     flags = 2)
 
                     # Draw connecting lines then draw bounding box in red
-                    #imgResults[i][j] = cv.drawMatchesKnn(query[i][0],qkp[i],train[j],tkp[j],good[i][j], None,**draw_params)
-                    #imgResults[i][j] = cv.polylines(imgResults[i][j], [np.int32(draw_dst)], True, (0,0,255),3, cv.LINE_AA)
-                    #cv.circle(imgResults[i][j], (int(draw_cx), int(cy[i][j][k])), 20, (255, 0, 0), -1)
-                    #plt.imshow(imgResults[i][j], cmap='gray')
-                    #plt.show()
-
+                    imgResults[i][j] = cv.drawMatchesKnn(query[i][0],qkp[i],train[j],tkp,good, None,**draw_params)
+                    imgResults[i][j] = cv.polylines(imgResults[i][j], [np.int32(draw_dst)], True, (0,0,255),3, cv.LINE_AA)
+                    cv.circle(imgResults[i][j], (int(draw_cx), int(cy[i][j][k])), 20, (255, 0, 0), -1)
+                    plt.imshow(imgResults[i][j], cmap='gray')
+                    plt.show() """
+                    
                 else:
                     break # not enough matches, check next image
 
-    # STARTOF AI assisted coding, displaying images on a grid using opencv
-    # instead of matplotlib which is what was used prior.       
-    """# TILE_W, TILE_H = 500, 250  # Standard size for each grid cell
-    TILE_W, TILE_H = round(1530 / len(train)), round(830 / len(query))  # Size dependent on the amount of query and train images
-    grid_rows = []
+    return total_result
 
-    for i in range(len(query)):
-        row_imgs = []
-       for j in range(len(train)):
-            # Resize each result so all tiles have identical dimensions
-            row_imgs.append(cv.resize(imgResults[i][j], (TILE_W, TILE_H)))
-            
-        # Stack all train columns horizontally for this query row
-        grid_rows.append(np.hstack(row_imgs))
-
-    # Stack all query rows vertically into one master grid image
-    final_grid = np.vstack(grid_rows)
-    cv.imshow("Homography Grid", final_grid)"""
-    # ENDOF AI assisted coding
-
-    # Draws bounding boxes on respective train images
-    for j in range(len(train)):
-        for box in total_result[0][j]:
-            cv.polylines(display_image[j], [np.int32(box)], True, (0, 255, 0), 3, cv.LINE_AA)
-
-    # Prints out the coordinates of the center points of each component type
-    for i in range(len(query)):
-        print(f"query {i} contains points {total_result[1][0][i]}")
-        if len(total_result[1][0][i]) is None:
-            print(f"this query is EMPTY")
-
-    # 1 -> 0 -> i -> cntr 
-    for j in range(len(train)):
-            for i in range(len(query)):
-                for cntr in range(len(total_result[1][0][i][j])):
-                    if total_result[1][1][i][j][cntr] is not None:
-                        cv.circle(display_image[j], (total_result[1][0][i][j][cntr], total_result[1][1][i][j][cntr]), 20, (255, 0, 0), -1)
-
-
-    # Plot display images on a grid dependent on the amount of query and train images
-    for i in range(len(query)):
-        for j in range(len(train)):
-            plt.subplot(len(query), len(train), i * len(train) + j + 1)
-            plt.imshow(display_image[j], cmap='gray')
-            plt.axis('off')
-
-    #plt.imshow(display_image, cmap='gray')
-    plt.show()
 
 # Main
 def main():
@@ -372,15 +337,12 @@ def main():
                     cv.imread('Test_images/Multi1.png',cv.IMREAD_GRAYSCALE)
                 ]
 
-                # find good matches
-                #good = matcher(train, query, qdes, tdes)
 
                 # find homography, and draw respective boxes
-                homography( qkp, query, train, boxp, qdes, sift)
-                #plt.show()    
-            
-                #image = imgResults[0][0]
-                #cv.imshow('Feature Matching', image)
+                total_result = homography( qkp, query, train, boxp, qdes, sift)
+                   
+                # display images on a grid
+                image_results(train, query, total_result)
                 
                 if cv.waitKey(1) == ord('q'):
                     break
