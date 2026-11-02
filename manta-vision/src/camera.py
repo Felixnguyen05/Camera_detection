@@ -1,4 +1,3 @@
-
 import cv2
 
 from vmbpy import (

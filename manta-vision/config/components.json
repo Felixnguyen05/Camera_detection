@@ -1,0 +1,33 @@
+{
+  "dictionary": "DICT_ARUCO_ORIGINAL",
+  "marker_size_mm": 20.0,
+  "components": [
+    {
+      "marker_id": 277,
+      "component_id": "SPK-001",
+      "class_id": 0,
+      "name": "Speaker",
+      "marker_to_component_mm": [0, 0],
+      "component_angle_deg": 0,
+      "footprint_mm": [60, 35]
+    },
+    {
+      "marker_id": 628,
+      "component_id": "MOD-001",
+      "class_id": 1,
+      "name": "Electronic Module",
+      "marker_to_component_mm": [0, 0],
+      "component_angle_deg": 0,
+      "footprint_mm": [40, 30]
+    },
+    {
+      "marker_id": 896,
+      "component_id": "SPK-002",
+      "class_id": 0,
+      "name": "Speaker",
+      "marker_to_component_mm": [0, 0],
+      "component_angle_deg": 0,
+      "footprint_mm": [60, 35]
+    }
+  ]
+}

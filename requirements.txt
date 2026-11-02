@@ -4,6 +4,7 @@ vmbpy
 
 # Computer Vision
 opencv-python
+opencv-contrib-python>=4.8
 numpy
 
 # Configuration
@@ -11,3 +12,4 @@ PyYAML
 
 # Testing
 pytest
+ultralytics>=8.3

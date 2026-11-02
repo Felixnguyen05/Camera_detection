@@ -1,0 +1,21 @@
+{
+  "timestamp_utc": "2026-11-02T15:14:03.527+00:00",
+  "detected_count": 0,
+  "unknown_marker_ids": [
+    726,
+    530,
+    857,
+    1013,
+    506,
+    496,
+    829,
+    582,
+    901,
+    360,
+    116
+  ],
+  "processing_ms": 50.62,
+  "coordinate_system": "image_pixels",
+  "robot_pose_calibrated": false,
+  "detections": []
+}
