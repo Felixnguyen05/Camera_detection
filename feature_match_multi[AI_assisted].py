@@ -15,6 +15,13 @@ SPP = 2 # Second(s) per picture
 Match_num = 2 # Max number of same type components in a picture
 matches_k_value = 5 # Number of matches to compare against for Lowe's ratio test
 
+matcher_option = "Brute Force"
+""" 
+Matcher Options: 
+    "Brute Force"
+    "FLANN"
+"""
+
 detector_option = "SIFT" # Feature detector to be used
 """ 
 Detector Options: 
@@ -119,12 +126,16 @@ def contour_n_bounding(query):
 # Checks features of the query and train images for matches
 # Also checks which matches are good based on Lowe's ratio test
 #       Returns good (vector containing good matches)
-def matcher(qdes, detector, train, i, j):
+def matcher_func(qdes, detector, train, i, j):
     matches = []
     good = []
-    bf = cv.BFMatcher()
     tkp = []
     tdes = []
+
+    if matcher_option == "Brute Force":
+        matcher = cv.BFMatcher()
+    elif matcher_option == "FLANN":
+        matcher = cv.FlannBasedMatcher()
 
     tkp, tdes = detector.detectAndCompute(train[j],None)
 
@@ -137,7 +148,7 @@ def matcher(qdes, detector, train, i, j):
 
     # Change k=2 to k=5 so a single query feature can match multiple objects
     if qdes is not None and tdes is not None and len(tdes) >= Match_num:
-        matches = bf.knnMatch(qdes[i], tdes, k=matches_k_value)
+        matches = matcher.knnMatch(qdes[i], tdes, k=matches_k_value)
     else:
         matches = []
 
@@ -190,21 +201,18 @@ def image_results(train, query, total_result):
             for box in total_result[0][j]:
                 cv.polylines(display_image[j], [np.int32(box)], True, (0, 255, 0), 3, cv.LINE_AA)
 
-        # Prints out the coordinates of the center points of each component type
-        for i in range(len(query)):
-            print(f"query {i} contains points {total_result[1][0][i]}")
-            if len(total_result[1][0][i]) is None:
-                print(f"this query is EMPTY")
+            for i in range(len(query)):
+                # Prints out the coordinates of the center points of each component type
+                print(f"query {i} contains points {total_result[1][0][i]}")
+                if len(total_result[1][0][i]) is None:
+                    print(f"this query is EMPTY")
 
-        
-        for j in range(len(train)):
-                for i in range(len(query)):
-                    for cntr in range(len(total_result[1][0][i][j])):
-                        if total_result[1][1][i][j][cntr] is not None:
-                            cv.circle(display_image[j], 
-                                        (total_result[1][0][i][j][cntr], 
-                                        total_result[1][1][i][j][cntr]), 20, (255, 0, 0), -1)
-
+                # Draws the center points of each component respectively
+                for cntr in range(len(total_result[1][0][i][j])):
+                    if total_result[1][1][i][j][cntr] is not None:
+                        cv.circle(display_image[j], 
+                                    (total_result[1][0][i][j][cntr], 
+                                    total_result[1][1][i][j][cntr]), 20, (255, 0, 0), -1)
 
     # Plot display images on a grid dependent on the amount of query and train images
     for i in range(len(query)):
@@ -250,7 +258,7 @@ def homography(qkp, query, train, boxp, qdes, detector):
             # loop for multiple components of the same type
             for k in range(Match_num):
                 #
-                good, tkp = matcher(qdes,  detector,  train, i, j)
+                good, tkp = matcher_func(qdes,  detector,  train, i, j)
 
                 if len(good)>=MIN_MATCH_COUNT and boxp[i] is not None:
                     src_pts = np.float32([ qkp[i][m[0].queryIdx].pt for m in good ]).reshape(-1,1,2)
@@ -338,6 +346,9 @@ def homography(qkp, query, train, boxp, qdes, detector):
                     # Draw connecting lines then draw bounding box in red
                     imgResults[i][j] = cv.drawMatchesKnn(query[i][0],qkp[i],train[j],tkp,good, None,**draw_params)
                     imgResults[i][j] = cv.polylines(imgResults[i][j], [np.int32(draw_dst)], True, (0,0,255),3, cv.LINE_AA)
+                    pt1 = (int(draw_dst[0][0][0]), int(draw_dst[0][0][1]))
+                    pt2 = (int(draw_dst[1][0][0]), int(draw_dst[1][0][1]))
+                    cv.line(imgResults[i][j],pt1,pt2,(255,0,0),5)
                     cv.circle(imgResults[i][j], (int(draw_cx), int(cy[i][j][k])), 20, (255, 0, 0), -1)
                     plt.imshow(imgResults[i][j], cmap='gray')
                     plt.show()
@@ -350,6 +361,7 @@ def homography(qkp, query, train, boxp, qdes, detector):
 
 # Main
 def main():
+    test_start = time.perf_counter()
     qkp, qdes, query, detector = query_init()
 
     # get contours and bounding boxes of query images
@@ -363,6 +375,7 @@ def main():
             start = time.time()
 
             while True:
+                loop_start = time.perf_counter()
                 end = time.time()
 
                 # timer, new image every x seconds - defined by SPP
@@ -388,7 +401,11 @@ def main():
                    
                 # display images on a grid
                 image_results(train, query, total_result)
-                
+
+                test_end = time.perf_counter()
+                print(f"Total time taken for entire program 1st time: {test_end - test_start} seconds")
+                print(f"Total time taken for this loop: {test_end - loop_start} seconds")
+
                 if cv.waitKey(1) == ord('q'):
                     break
 
