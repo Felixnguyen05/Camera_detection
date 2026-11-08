@@ -4,8 +4,10 @@ import cv2 as cv
 import matplotlib.pyplot as plt
 # Asynchronous grab
 import time
-from sympy import Point, Line
+from sympy import Line
 from vmbpy import *
+# Data collection
+import pandas as pd
 
 MIN_INLIERS = 12      # Define this next to MIN_MATCH_COUNT; must be well above 4
 MIN_AREA_RATIO = 0.25 # Projected box area vs. original query box area
@@ -23,9 +25,11 @@ checks_number = 50 # Number of checks for FLANN matcher [Default = 50, higher = 
 nfeatures_value = 1000 # Number of features to detect for ORB [Default = 500, higher = more accurate but slower]
 WTA_K_value = 3 # ORB parameter [Default = 2, higher = more accurate but slower]
 # ENDOF AI assisted coding
+HessThreshold = 400 # Hessian threshold for SURF [Default = 400]
 
 show_process = True # Set to True to show step by step how the program works
 live_camera = False # Set to True to use live camera feed, False to use test images
+check_angle = False # Set to true to check angle of component relative to ArUco marker
 
 
 matcher_option = "Brute Force" # Feature matcher to be used
@@ -47,29 +51,34 @@ Detector Options:
 
 # Initiates query images, initiates feature detector and finds the features of query images
 #       Returns qkp, qdes, query, detector (keypoints and descriptors, vector of images, detector function)
+#
+# Sources:
+# Feature detection and matching =
+#   https://docs.opencv.org/3.4.20/db/d27/tutorial_py_table_of_contents_feature2d.html
+#   https://docs.opencv.org/3.4.20/d9/d97/tutorial_table_of_content_features2d.html
 def query_init():
 
     #query image path, component name, upper threshold, lower threshold
     query = [
-        [cv.imread('Test_images/Query/Pyros.png',cv.IMREAD_GRAYSCALE), "Pyros", 200, 70],
-        [cv.imread('Test_images/Query/STEV.png',cv.IMREAD_GRAYSCALE), "STEV", 200, 70],
-        [cv.imread('Test_images/Query/BB79.png',cv.IMREAD_GRAYSCALE), "BB79", 142, 0],
-        [cv.imread('Test_images/Query/BB97.png',cv.IMREAD_GRAYSCALE), "BB97", 142, 0],
-        [cv.imread('Test_images/Query/BB84.png',cv.IMREAD_GRAYSCALE), "BB84", 142, 0],
-        [cv.imread('Test_images/Query/BB96.png',cv.IMREAD_GRAYSCALE), "BB96", 142, 0],
-        [cv.imread('Test_images/Query/BB61.png',cv.IMREAD_GRAYSCALE), "BB61", 155, 70],
-        [cv.imread('Test_images/Query/BB82.png',cv.IMREAD_GRAYSCALE), "BB82", 155, 70],
-        [cv.imread('Test_images/Query/Standoff.png',cv.IMREAD_GRAYSCALE), "Standoff", 155, 95],
-        [cv.imread('Test_images/Query/CurrShunt.png',cv.IMREAD_GRAYSCALE), "Current Shunt", 155, 103],
-        [cv.imread('Test_images/Query/BreakResistor.png',cv.IMREAD_GRAYSCALE), "Break Resistor", 155, 70],
-        [cv.imread('Test_images/Query/BB102.png',cv.IMREAD_GRAYSCALE), "BB102", 155, 70]
+        [cv.imread('Test_images/NonArUco/Query/Pyros.png',cv.IMREAD_GRAYSCALE), "Pyros", 200, 70],
+        [cv.imread('Test_images/NonArUco/Query/STEV.png',cv.IMREAD_GRAYSCALE), "STEV", 200, 70],
+        [cv.imread('Test_images/NonArUco/Query/BB79.png',cv.IMREAD_GRAYSCALE), "BB79", 142, 0],
+        [cv.imread('Test_images/NonArUco/Query/BB97.png',cv.IMREAD_GRAYSCALE), "BB97", 142, 0],
+        [cv.imread('Test_images/NonArUco/Query/BB84.png',cv.IMREAD_GRAYSCALE), "BB84", 142, 0],
+        [cv.imread('Test_images/NonArUco/Query/BB96.png',cv.IMREAD_GRAYSCALE), "BB96", 142, 0],
+        [cv.imread('Test_images/NonArUco/Query/BB61.png',cv.IMREAD_GRAYSCALE), "BB61", 155, 70],
+        [cv.imread('Test_images/NonArUco/Query/BB82.png',cv.IMREAD_GRAYSCALE), "BB82", 155, 70],
+        [cv.imread('Test_images/NonArUco/Query/Standoff.png',cv.IMREAD_GRAYSCALE), "Standoff", 155, 95],
+        [cv.imread('Test_images/NonArUco/Query/CurrShunt.png',cv.IMREAD_GRAYSCALE), "Current Shunt", 155, 103],
+        [cv.imread('Test_images/NonArUco/Query/BreakResistor.png',cv.IMREAD_GRAYSCALE), "Break Resistor", 155, 70],
+        [cv.imread('Test_images/NonArUco/Query/BB102.png',cv.IMREAD_GRAYSCALE), "BB102", 155, 70]
     ]
 
     #init feature detector and find features of query images
     if detector_option == "SIFT":
         detector = cv.SIFT_create()
     elif detector_option == "SURF":
-        detector = cv.xfeatures2d.SURF_create()
+        detector = cv.xfeatures2d.SURF_create(HessThreshold)
     elif detector_option == "ORB":
         detector = cv.ORB_create(nfeatures=nfeatures_value, WTA_K = WTA_K_value)
     elif detector_option == "AKAZE":
@@ -277,6 +286,7 @@ def homography(qkp, query, train, boxp, qdes, detector):
     total_good = []
     total_keypoints = []
     matched_boxes = []
+    total_angles = []
     cx = []
     cy = []
 
@@ -288,6 +298,7 @@ def homography(qkp, query, train, boxp, qdes, detector):
         total_matches.append([])
         total_good.append([])
         total_keypoints.append([])
+        total_angles.append([])
 
         # loop through all the training images
         for j in range(len(train)):
@@ -299,6 +310,8 @@ def homography(qkp, query, train, boxp, qdes, detector):
             total_matches[i].append([])
             total_good[i].append([])
             total_keypoints[i].append([])
+            total_angles[i].append([])
+
             train_copy = train[j].copy() # copy of the train image to draw the bounding box on
 
             # loop for multiple components of the same type
@@ -344,12 +357,17 @@ def homography(qkp, query, train, boxp, qdes, detector):
                     inpaint_mask = cv.bitwise_not(inpaint_mask)
                     train_copy = cv.inpaint(train_copy, inpaint_mask, 3, cv.INPAINT_TELEA)
 
+                    
+
                     #
                     # Store data for later analysis
                     #
                     total_matches[i][j].append(len(matches))
                     total_good[i][j].append(len(good))
                     total_keypoints[i][j].append(len(tkp))
+                    if check_angle == True:
+                        angle_deg = get_angle(dst)
+                        total_angles[i][j].append(angle_deg)
                     
                     Moment = cv.moments(dst)
                     cx[i][j].append(int(Moment['m10']/Moment['m00']))
@@ -369,7 +387,7 @@ def homography(qkp, query, train, boxp, qdes, detector):
                     break # not enough matches, check next image
 
 
-    return matched_boxes, cx, cy, total_matches, total_good, total_keypoints
+    return matched_boxes, cx, cy, total_matches, total_good, total_keypoints, total_angles
 
 # Show step by step how the program works, drawing the matches
 # that fall within the homography and drawing the bounding box 
@@ -378,6 +396,9 @@ def homography(qkp, query, train, boxp, qdes, detector):
 # Sources: 
 # Feature matching multiple objects of the same type =
 #   https://github.com/prob1995/multi_scale_multi_object_template_matching
+# Finding the angle between two lines =
+#   https://www.geeksforgeeks.org/python/python-sympy-line-angle_between-method/
+#
 def step_by_step_display(imgResults, query, train, cx, cy, i, j, k, dst, matchesMask, tkp, qkp, w, good):
     draw_dst = dst + (w, 0)  # adding offset 
     draw_cx = cx[i][j][k] + w # adding offset
@@ -394,19 +415,35 @@ def step_by_step_display(imgResults, query, train, cx, cy, i, j, k, dst, matches
     pt2 = (int(draw_dst[1][0][0]), int(draw_dst[1][0][1]))
     cv.line(imgResults[i][j],pt1,pt2,(255,0,0),5)
 
+    cv.circle(imgResults[i][j], (int(draw_cx), int(cy[i][j][k])), 20, (255, 0, 0), -1)
+    plt.imshow(imgResults[i][j], cmap='gray')
+    plt.show()
+
+# Detects ArUco marker on the image and extracts its y-axis line
+# to compare against the detected components
+#   Returns angle_deg (angle of component relative to marker)
+# 
+def get_angle(dst):
+    pt1 = (int(dst[0][0][0]), int(dst[0][0][1]))
+    pt2 = (int(dst[1][0][0]), int(dst[1][0][1]))
+
+    #############################################
+    # ADD ARUCO CHECK HERE
+    ############################################
+    
     l1 = Line((30,10), (30, 200))
     l2 = Line(pt1, pt2)
 
     angle_rad = l2.angle_between(l1)
     angle_deg = math.degrees(angle_rad)
-    print(f"Angle using new new method = {angle_deg} degrees")
 
-    l1 = [(30,10), (30, 200)]
-    cv.line(imgResults[i][j],l1[0],l1[1],(255,0,0),5)
+    # Check which direction the line is pointing, positive is anticlockwise
+    if pt1[0] < pt2[0]: 
+        angle_deg = 180 - angle_deg
+    else:
+        angle_deg = angle_deg - 180
 
-    cv.circle(imgResults[i][j], (int(draw_cx), int(cy[i][j][k])), 20, (255, 0, 0), -1)
-    plt.imshow(imgResults[i][j], cmap='gray')
-    plt.show()
+    return angle_deg
 
 # Main
 def main():
@@ -440,37 +477,37 @@ def main():
                 else:
                     train = [
                     # different component types in the same image
-                    cv.imread('Test_images/Train/DiffComps1.png',cv.IMREAD_GRAYSCALE),
-                    cv.imread('Test_images/Train/DiffComps2.png',cv.IMREAD_GRAYSCALE),
-                    cv.imread('Test_images/Train/DiffComps3.png',cv.IMREAD_GRAYSCALE),
-                    cv.imread('Test_images/Train/DiffComps4.png',cv.IMREAD_GRAYSCALE),
-                    cv.imread('Test_images/Train/DiffComps5.png',cv.IMREAD_GRAYSCALE),
-                    cv.imread('Test_images/Train/DiffComps6.png',cv.IMREAD_GRAYSCALE),
-                    #cv.imread('Test_images/Train/DiffComps7.png',cv.IMREAD_GRAYSCALE),
-                    #cv.imread('Test_images/Train/DiffComps8.png',cv.IMREAD_GRAYSCALE),
-                    #cv.imread('Test_images/Train/DiffComps9.png',cv.IMREAD_GRAYSCALE),
-                    #cv.imread('Test_images/Train/DiffComps10.png',cv.IMREAD_GRAYSCALE),
-                    #cv.imread('Test_images/Train/DiffComps11.png',cv.IMREAD_GRAYSCALE),
+                    cv.imread('Test_images/NonArUco/Train/DiffComps1.png',cv.IMREAD_GRAYSCALE),
+                    cv.imread('Test_images/NonArUco/Train/DiffComps2.png',cv.IMREAD_GRAYSCALE),
+                    cv.imread('Test_images/NonArUco/Train/DiffComps3.png',cv.IMREAD_GRAYSCALE),
+                    cv.imread('Test_images/NonArUco/Train/DiffComps4.png',cv.IMREAD_GRAYSCALE),
+                    cv.imread('Test_images/NonArUco/Train/DiffComps5.png',cv.IMREAD_GRAYSCALE),
+                    cv.imread('Test_images/NonArUco/Train/DiffComps6.png',cv.IMREAD_GRAYSCALE),
+                    #cv.imread('Test_images/NonArUco/Train/DiffComps7.png',cv.IMREAD_GRAYSCALE),
+                    #cv.imread('Test_images/NonArUco/Train/DiffComps8.png',cv.IMREAD_GRAYSCALE),
+                    #cv.imread('Test_images/NonArUco/Train/DiffComps9.png',cv.IMREAD_GRAYSCALE),
+                    #cv.imread('Test_images/NonArUco/Train/DiffComps10.png',cv.IMREAD_GRAYSCALE),
+                    #cv.imread('Test_images/NonArUco/Train/DiffComps11.png',cv.IMREAD_GRAYSCALE),
 
                     # multiple of the same component type in one image
-                    #cv.imread('Test_images/Train/Multi1.png',cv.IMREAD_GRAYSCALE),
-                    #cv.imread('Test_images/Train/Multi2.png',cv.IMREAD_GRAYSCALE),
-                    #cv.imread('Test_images/Train/Multi3.png',cv.IMREAD_GRAYSCALE),
-                    #cv.imread('Test_images/Train/Multi4.png',cv.IMREAD_GRAYSCALE),
-                    #cv.imread('Test_images/Train/Multi5.png',cv.IMREAD_GRAYSCALE),
+                    #cv.imread('Test_images/NonArUco/Train/Multi1.png',cv.IMREAD_GRAYSCALE),
+                    #cv.imread('Test_images/NonArUco/Train/Multi2.png',cv.IMREAD_GRAYSCALE),
+                    #cv.imread('Test_images/NonArUco/Train/Multi3.png',cv.IMREAD_GRAYSCALE),
+                    #cv.imread('Test_images/NonArUco/Train/Multi4.png',cv.IMREAD_GRAYSCALE),
+                    #cv.imread('Test_images/NonArUco/Train/Multi5.png',cv.IMREAD_GRAYSCALE),
 
                     # images of components sittin on the border of the image, to test the program's reaction
-                    #cv.imread('Test_images/Train/Border1.png',cv.IMREAD_GRAYSCALE),
-                    #cv.imread('Test_images/Train/Border2.png',cv.IMREAD_GRAYSCALE),
-                    #cv.imread('Test_images/Train/Border3.png',cv.IMREAD_GRAYSCALE),
+                    #cv.imread('Test_images/NonArUco/Train/Border1.png',cv.IMREAD_GRAYSCALE),
+                    #cv.imread('Test_images/NonArUco/Train/Border2.png',cv.IMREAD_GRAYSCALE),
+                    #cv.imread('Test_images/NonArUco/Train/Border3.png',cv.IMREAD_GRAYSCALE),
 
                     # image with components that are not in the query images
-                    #cv.imread('Test_images/Train/NonQuery.png',cv.IMREAD_GRAYSCALE)
+                    #cv.imread('Test_images/NonArUco/Train/NonQuery.png',cv.IMREAD_GRAYSCALE)
                 ]
 
 
                 # find homography, and draw respective boxes
-                matched_boxes, cx, cy, total_matches, total_good, total_keypoints = homography( qkp, query, train, boxp, qdes, detector)
+                matched_boxes, cx, cy, total_matches, total_good, total_keypoints, total_angles = homography( qkp, query, train, boxp, qdes, detector)
 
                 # End of performance timer, and print of all test results
                 # (Taken before image_results however the time that function takes to run should be consistent)
@@ -491,6 +528,9 @@ def main():
 
                 print(f"Total time taken for entire program 1st time: {test_end - test_start} seconds")
                 print(f"Total time taken for this loop: {test_end - loop_start} seconds")  
+
+                #df = pd.DataFrame({"Name": ["A", "B"], "Score": [90, 80]})
+                #df.to_excel("Data.xlsx", index=False, sheet_name="")
 
                 # display images on a grid
                 image_results(train, query, matched_boxes, cx, cy)
