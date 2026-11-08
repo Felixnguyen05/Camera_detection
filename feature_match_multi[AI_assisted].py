@@ -15,8 +15,18 @@ MIN_AREA_RATIO = 0.25 # Projected box area vs. original query box area
 MAX_AREA_RATIO = 4.0
 
 MIN_MATCH_COUNT = 10 # Minimum number of good matches before proceeding
-Lowes_ratio = 0.7 # Lowe's ratio test (distance ratio to eliminate false matches), lower = more strict, higher = more lenient
 SPP = 2 # Second(s) per picture
+
+show_process = False # Set to True to show step by step how the program works
+live_camera = False # Set to True to use live camera feed, False to use test images
+check_angle = False # Set to true to check angle of component relative to ArUco marker
+ArUco_images = False # Set to true use the ArUco train images
+
+#
+# Values to be altered for testing
+#
+sheet_name = ""
+Lowes_ratio = 0.7 # Lowe's ratio test (distance ratio to eliminate false matches), lower = more strict, higher = more lenient
 Match_num = 5 # Max number of same type components in a picture
 matches_k_value = 5 # Number of matches to compare against for Lowe's ratio test
 
@@ -27,12 +37,6 @@ nfeatures_value = 1000 # Number of features to detect for ORB [Default = 500, hi
 WTA_K_value = 3 # ORB parameter [Default = 2, higher = more accurate but slower]
 # ENDOF AI assisted coding
 HessThreshold = 400 # Hessian threshold for SURF [Default = 400]
-
-show_process = False # Set to True to show step by step how the program works
-live_camera = False # Set to True to use live camera feed, False to use test images
-check_angle = False # Set to true to check angle of component relative to ArUco marker
-ArUco_images = False # Set to true use the ArUco train images
-
 
 matcher_option = "Brute Force" # Feature matcher to be used
 """ 
@@ -463,24 +467,56 @@ def get_angle(dst, train_copy):
     if ids is not None:
         # get y-axis of ArUco marker
         pt1_aruco = (int(corners[0][0][0][0]), int(corners[0][0][0][1]))
-        pt2_aruco = (int(corners[0][0][3][0]), int(corners[0][0][3][1]))
-        cv.line(train_copy,pt1_aruco,pt2_aruco,(255,0,0),5)
+        pty_aruco = (int(corners[0][0][3][0]), int(corners[0][0][3][1]))
+        cv.line(train_copy,pt1_aruco,pty_aruco,(255,0,0),5)
 
+        ptx_aruco = (int(corners[0][0][1][0]), int(corners[0][0][1][1]))
+        cv.line(train_copy,pt1_aruco,ptx_aruco,(255,0,0),5)
 
-        l1 = Line(pt1_aruco, pt2_aruco)
+        l1 = Line(pt1_aruco, pty_aruco)
         l2 = Line(pt1, pt2)
+        l3 = Line(pt1_aruco, ptx_aruco)
 
-        angle_rad = l2.angle_between(l1)
-        angle_deg = math.degrees(angle_rad)
+        angle_rad_y = l2.angle_between(l1)
+        angle_deg_y = math.degrees(angle_rad_y)
 
-        # Check which direction the line is pointing, positive is anticlockwise
-        if pt1[0] < pt2[0]: 
-            angle_deg = 180 - angle_deg
+        angle_rad_x = l2.angle_between(l3)
+        angle_deg_x = math.degrees(angle_rad_x)
+
+        print(f"angle y: {angle_deg_y}")
+        print(f"angle x: {angle_deg_x}")
+
+        # Uses the axes that the side of the component is closest 
+        # to - This is because in actual application rotation
+        # differences should be very minimal, and a big difference
+        # (45+ deg) would only be caused by the side of the component
+        # being used for comparison not being in the y-axis
+        diffY = abs(pt1[0] - pt2[0])
+        diffX = abs(pt1[1] - pt2[1])
+        if diffY < diffX:
+            # Check which direction the line is pointing, positive is anticlockwise
+            if pt1[0] < pt2[0]: 
+                angle_deg = 180 - angle_deg_y
+            else:
+                angle_deg = angle_deg_y - 180
+
         else:
-            angle_deg = angle_deg - 180
+            # Check which direction the line is pointing, positive is anticlockwise
+            if pt2[1] < pt1[1]: 
+                angle_deg = - angle_deg_x
+            else:
+                angle_deg = angle_deg_x
+
+    print(angle_deg)
 
     return angle_deg
 
+# Load images from the specified folder
+#   Returns train and train_name (train images and file name)
+#
+# Sources:
+# Looking through all images in a folder =
+#   https://www.youtube.com/watch?v=XOWKKUyjhcU
 def load_images(root):
     train = []
     train_name = []
@@ -500,13 +536,51 @@ def load_images(root):
 
     return train, train_name
 
+# AI generated function - Formats data into  columns and rows
+#   Returns rows (variable containing all the data in each row)
+def collect_rows(loop_number, query, train_name, total_keypoints, total_matches,
+                 total_good, total_angles, loop_time, run_time):
+    rows = []
+    for i in range(len(query)):
+        for j in range(len(train_name)):
+            for k in range(len(total_keypoints[i][j])):
+                rows.append({
+                    "loop": loop_number,
+                    "query": query[i][1],
+                    "train": train_name[j],
+                    "component": k,
+                    "keypoints": total_keypoints[i][j][k],
+                    "matches": total_matches[i][j][k],
+                    "good_matches": total_good[i][j][k],
+                    "angle": total_angles[i][j][k],
+                    "loop_time_s": loop_time,
+                    "total_run_time_s": run_time,
+                })
+    return rows
+
+# AI generated function - Export data to Excel file
+def save_run_to_excel(rows, sheet_name, settings=None, path="Data.xlsx"):
+    df = pd.DataFrame(rows)
+
+    # Record the variables you changed as columns, so every sheet documents itself
+    if settings:
+        for key, value in settings.items():
+            df[key] = value
+
+    sheet_name = sheet_name[:31]  # Excel limits sheet names to 31 characters
+
+    if os.path.exists(path):
+        with pd.ExcelWriter(path, engine="openpyxl", mode="a",
+                            if_sheet_exists="replace") as writer:
+            df.to_excel(writer, sheet_name=sheet_name, index=False)
+    else:
+        with pd.ExcelWriter(path, engine="openpyxl") as writer:
+            df.to_excel(writer, sheet_name=sheet_name, index=False)
+
 # Main
-#
-# Sources:
-# Looking through all images in a folder =
-#   https://www.youtube.com/watch?v=XOWKKUyjhcU
-#
 def main():
+    all_rows = []
+    loop_number = 0
     test_start = time.perf_counter()
     qkp, qdes, query, detector = query_init()
 
@@ -560,32 +634,29 @@ def main():
                 # End of performance timer, and print of all test results
                 # (Taken before image_results however the time that function takes to run should be consistent)
                 test_end = time.perf_counter()
+                loop_number += 1
 
-                for i in range(len(query)):
-                    print(f"{query[i][1]} data:")
-
-                    for j in range(len(train)):
-                        if len(total_keypoints[i][j]) > 0:
-                            print(f"   Train image {train_name[j]} data:")
-
-                            for k in range(len(total_keypoints[i][j])):
-                                print(f"      Component {k} data:")
-                                print(f"         number of keypoints = {(total_keypoints[i][j][k])}")
-                                print(f"         number of matches= {(total_matches[i][j][k])}")
-                                print(f"         number of good matches= {(total_good[i][j][k])}")
-                                print(f"         calculated angle= {total_angles[i][j][k]}")
-
-                print(f"Total time taken for entire program 1st time: {test_end - test_start} seconds")
-                print(f"Total time taken for this loop: {test_end - loop_start} seconds")  
-
-                #df = pd.DataFrame({"Name": ["A", "B"], "Score": [90, 80]})
-                #df.to_excel("Data.xlsx", index=False, sheet_name="")
+                # STARTOF AI generated code - A way to export all the test data being
+                # saved into excel so that it can be analysed
+                all_rows.extend(collect_rows(loop_number, query, train_name, total_keypoints, total_matches,
+                 total_good, total_angles, test_end - loop_start, test_end - test_start))
+                # ENDOF AI generated code
 
                 # display images on a grid
-                image_results(train, query, matched_boxes, cx, cy)
+                #image_results(train, query, matched_boxes, cx, cy)
+
+                if loop_number >= 3:   # or whatever condition ends your test
+                    break
 
                 if cv.waitKey(1) == ord('q'):
                     break
+
+            save_run_to_excel(
+                all_rows,
+                sheet_name=sheet_name,
+                settings={"Lowes_ratio": Lowes_ratio,
+                        "MIN_MATCH_COUNT": MIN_MATCH_COUNT, "Match_num": Match_num},
+            )
 
 
 if __name__ == '__main__':

@@ -22,6 +22,10 @@ pt1 = (int(corners[0][0][0][0]), int(corners[0][0][0][1]))
 pt2 = (int(corners[0][0][3][0]), int(corners[0][0][3][1]))
 cv2.line(image,pt1,pt2,(255,0,0),5)
 
+pt1 = (int(corners[0][0][0][0]), int(corners[0][0][0][1]))
+pt2 = (int(corners[0][0][1][0]), int(corners[0][0][1][1]))
+cv2.line(image,pt1,pt2,(255,0,0),5)
+
 if ids is not None:
     cv2.aruco.drawDetectedMarkers(image, corners, ids)
 
