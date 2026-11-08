@@ -2,6 +2,7 @@ import math
 import numpy as np
 import cv2 as cv
 import matplotlib.pyplot as plt
+import os
 # Asynchronous grab
 import time
 from sympy import Line
@@ -27,9 +28,10 @@ WTA_K_value = 3 # ORB parameter [Default = 2, higher = more accurate but slower]
 # ENDOF AI assisted coding
 HessThreshold = 400 # Hessian threshold for SURF [Default = 400]
 
-show_process = True # Set to True to show step by step how the program works
+show_process = False # Set to True to show step by step how the program works
 live_camera = False # Set to True to use live camera feed, False to use test images
 check_angle = False # Set to true to check angle of component relative to ArUco marker
+ArUco_images = False # Set to true use the ArUco train images
 
 
 matcher_option = "Brute Force" # Feature matcher to be used
@@ -48,6 +50,12 @@ Detector Options:
     "AKAZE"
     "BRISK" 
 """
+# Set up ArUco detector
+aruco_dict = cv.aruco.getPredefinedDictionary(
+    cv.aruco.DICT_4X4_50
+)
+parameters = cv.aruco.DetectorParameters()
+detector = cv.aruco.ArucoDetector(aruco_dict, parameters)
 
 # Initiates query images, initiates feature detector and finds the features of query images
 #       Returns qkp, qdes, query, detector (keypoints and descriptors, vector of images, detector function)
@@ -59,20 +67,36 @@ Detector Options:
 def query_init():
 
     #query image path, component name, upper threshold, lower threshold
-    query = [
-        [cv.imread('Test_images/NonArUco/Query/Pyros.png',cv.IMREAD_GRAYSCALE), "Pyros", 200, 70],
-        [cv.imread('Test_images/NonArUco/Query/STEV.png',cv.IMREAD_GRAYSCALE), "STEV", 200, 70],
-        [cv.imread('Test_images/NonArUco/Query/BB79.png',cv.IMREAD_GRAYSCALE), "BB79", 142, 0],
-        [cv.imread('Test_images/NonArUco/Query/BB97.png',cv.IMREAD_GRAYSCALE), "BB97", 142, 0],
-        [cv.imread('Test_images/NonArUco/Query/BB84.png',cv.IMREAD_GRAYSCALE), "BB84", 142, 0],
-        [cv.imread('Test_images/NonArUco/Query/BB96.png',cv.IMREAD_GRAYSCALE), "BB96", 142, 0],
-        [cv.imread('Test_images/NonArUco/Query/BB61.png',cv.IMREAD_GRAYSCALE), "BB61", 155, 70],
-        [cv.imread('Test_images/NonArUco/Query/BB82.png',cv.IMREAD_GRAYSCALE), "BB82", 155, 70],
-        [cv.imread('Test_images/NonArUco/Query/Standoff.png',cv.IMREAD_GRAYSCALE), "Standoff", 155, 95],
-        [cv.imread('Test_images/NonArUco/Query/CurrShunt.png',cv.IMREAD_GRAYSCALE), "Current Shunt", 155, 103],
-        [cv.imread('Test_images/NonArUco/Query/BreakResistor.png',cv.IMREAD_GRAYSCALE), "Break Resistor", 155, 70],
-        [cv.imread('Test_images/NonArUco/Query/BB102.png',cv.IMREAD_GRAYSCALE), "BB102", 155, 70]
-    ]
+    if ArUco_images == True:
+        query = [
+            [cv.imread('Test_images/ArUco/Query/Pyros.png',cv.IMREAD_GRAYSCALE), "Pyros", 200, 70],
+            [cv.imread('Test_images/ArUco/Query/STEV.png',cv.IMREAD_GRAYSCALE), "STEV", 200, 70],
+            [cv.imread('Test_images/ArUco/Query/BB79.png',cv.IMREAD_GRAYSCALE), "BB79", 142, 0],
+            [cv.imread('Test_images/ArUco/Query/BB97.png',cv.IMREAD_GRAYSCALE), "BB97", 142, 0],
+            [cv.imread('Test_images/ArUco/Query/BB84.png',cv.IMREAD_GRAYSCALE), "BB84", 142, 0],
+            [cv.imread('Test_images/ArUco/Query/BB96.png',cv.IMREAD_GRAYSCALE), "BB96", 142, 0],
+            [cv.imread('Test_images/ArUco/Query/BB61.png',cv.IMREAD_GRAYSCALE), "BB61", 155, 70],
+            [cv.imread('Test_images/ArUco/Query/BB82.png',cv.IMREAD_GRAYSCALE), "BB82", 155, 70],
+            [cv.imread('Test_images/ArUco/Query/Standoff.png',cv.IMREAD_GRAYSCALE), "Standoff", 155, 95],
+            [cv.imread('Test_images/ArUco/Query/CurrShunt.png',cv.IMREAD_GRAYSCALE), "Current Shunt", 155, 103],
+            [cv.imread('Test_images/ArUco/Query/BreakResistor.png',cv.IMREAD_GRAYSCALE), "Break Resistor", 155, 70],
+            [cv.imread('Test_images/ArUco/Query/BB102.png',cv.IMREAD_GRAYSCALE), "BB102", 155, 70]
+        ]
+    else:
+        query = [
+            [cv.imread('Test_images/NonArUco/Query/Pyros.png',cv.IMREAD_GRAYSCALE), "Pyros", 200, 70],
+            [cv.imread('Test_images/NonArUco/Query/STEV.png',cv.IMREAD_GRAYSCALE), "STEV", 200, 70],
+            [cv.imread('Test_images/NonArUco/Query/BB79.png',cv.IMREAD_GRAYSCALE), "BB79", 142, 0],
+            [cv.imread('Test_images/NonArUco/Query/BB97.png',cv.IMREAD_GRAYSCALE), "BB97", 142, 0],
+            [cv.imread('Test_images/NonArUco/Query/BB84.png',cv.IMREAD_GRAYSCALE), "BB84", 142, 0],
+            [cv.imread('Test_images/NonArUco/Query/BB96.png',cv.IMREAD_GRAYSCALE), "BB96", 142, 0],
+            [cv.imread('Test_images/NonArUco/Query/BB61.png',cv.IMREAD_GRAYSCALE), "BB61", 155, 70],
+            [cv.imread('Test_images/NonArUco/Query/BB82.png',cv.IMREAD_GRAYSCALE), "BB82", 155, 70],
+            [cv.imread('Test_images/NonArUco/Query/Standoff.png',cv.IMREAD_GRAYSCALE), "Standoff", 155, 95],
+            [cv.imread('Test_images/NonArUco/Query/CurrShunt.png',cv.IMREAD_GRAYSCALE), "Current Shunt", 155, 103],
+            [cv.imread('Test_images/NonArUco/Query/BreakResistor.png',cv.IMREAD_GRAYSCALE), "Break Resistor", 155, 70],
+            [cv.imread('Test_images/NonArUco/Query/BB102.png',cv.IMREAD_GRAYSCALE), "BB102", 155, 70]
+        ]
 
     #init feature detector and find features of query images
     if detector_option == "SIFT":
@@ -253,11 +277,11 @@ def image_results(train, query, matched_boxes, cx, cy):
                                     (cx[i][j][cntr], 
                                     cy[i][j][cntr]), 20, (255, 0, 0), -1)
 
-    for i in range(3):
-        for j in range(2):
-            plt.subplot(2, 3, i * 2 + j + 1)
-            plt.imshow(display_image[i * 2 + j], cmap='gray')
-            plt.axis('off')
+        for i in range(3):
+            for j in range(2):
+                plt.subplot(2, 3, i * 2 + j + 1)
+                plt.imshow(display_image[i * 2 + j], cmap='gray')
+                plt.axis('off')
                
     # Plot display images on a grid dependent on the amount of query and train images
     #for i in range(len(query)):
@@ -358,7 +382,6 @@ def homography(qkp, query, train, boxp, qdes, detector):
                     train_copy = cv.inpaint(train_copy, inpaint_mask, 3, cv.INPAINT_TELEA)
 
                     
-
                     #
                     # Store data for later analysis
                     #
@@ -366,8 +389,10 @@ def homography(qkp, query, train, boxp, qdes, detector):
                     total_good[i][j].append(len(good))
                     total_keypoints[i][j].append(len(tkp))
                     if check_angle == True:
-                        angle_deg = get_angle(dst)
+                        angle_deg = get_angle(dst, train_copy)
                         total_angles[i][j].append(angle_deg)
+                    else:
+                        total_angles[i][j].append([])
                     
                     Moment = cv.moments(dst)
                     cx[i][j].append(int(Moment['m10']/Moment['m00']))
@@ -423,29 +448,64 @@ def step_by_step_display(imgResults, query, train, cx, cy, i, j, k, dst, matches
 # to compare against the detected components
 #   Returns angle_deg (angle of component relative to marker)
 # 
-def get_angle(dst):
+# Sources:
+# Detecting ArUco markers = 
+#   https://www.geeksforgeeks.org/computer-vision/detecting-aruco-markers-with-opencv-and-python-1/
+#
+def get_angle(dst, train_copy):
+    angle_deg = []
+    
+    # Get points for the side of a component
     pt1 = (int(dst[0][0][0]), int(dst[0][0][1]))
     pt2 = (int(dst[1][0][0]), int(dst[1][0][1]))
 
-    #############################################
-    # ADD ARUCO CHECK HERE
-    ############################################
-    
-    l1 = Line((30,10), (30, 200))
-    l2 = Line(pt1, pt2)
+    corners, ids, rejected = detector.detectMarkers(train_copy)
+    if ids is not None:
+        # get y-axis of ArUco marker
+        pt1_aruco = (int(corners[0][0][0][0]), int(corners[0][0][0][1]))
+        pt2_aruco = (int(corners[0][0][3][0]), int(corners[0][0][3][1]))
+        cv.line(train_copy,pt1_aruco,pt2_aruco,(255,0,0),5)
 
-    angle_rad = l2.angle_between(l1)
-    angle_deg = math.degrees(angle_rad)
 
-    # Check which direction the line is pointing, positive is anticlockwise
-    if pt1[0] < pt2[0]: 
-        angle_deg = 180 - angle_deg
-    else:
-        angle_deg = angle_deg - 180
+        l1 = Line(pt1_aruco, pt2_aruco)
+        l2 = Line(pt1, pt2)
+
+        angle_rad = l2.angle_between(l1)
+        angle_deg = math.degrees(angle_rad)
+
+        # Check which direction the line is pointing, positive is anticlockwise
+        if pt1[0] < pt2[0]: 
+            angle_deg = 180 - angle_deg
+        else:
+            angle_deg = angle_deg - 180
 
     return angle_deg
 
+def load_images(root):
+    train = []
+    train_name = []
+    
+    fnames = sorted(os.listdir(root))
+    
+    for i in range(len(fnames)):
+        filepath = os.path.join(root,fnames[i])
+
+        # STARTOF AI assisted coding - How to skip folder
+        if not os.path.isfile(filepath):
+            continue  # skip subfolders
+        # ENDOF AI assisted coding
+
+        train.append(cv.imread(filepath, cv.IMREAD_GRAYSCALE))
+        train_name.append(fnames[i]) 
+
+    return train, train_name
+
 # Main
+#
+# Sources:
+# Looking through all images in a folder =
+#   https://www.youtube.com/watch?v=XOWKKUyjhcU
+#
 def main():
     test_start = time.perf_counter()
     qkp, qdes, query, detector = query_init()
@@ -475,35 +535,23 @@ def main():
                     train = [frameCV]
 
                 else:
-                    train = [
-                    # different component types in the same image
-                    cv.imread('Test_images/NonArUco/Train/DiffComps1.png',cv.IMREAD_GRAYSCALE),
-                    cv.imread('Test_images/NonArUco/Train/DiffComps2.png',cv.IMREAD_GRAYSCALE),
-                    cv.imread('Test_images/NonArUco/Train/DiffComps3.png',cv.IMREAD_GRAYSCALE),
-                    cv.imread('Test_images/NonArUco/Train/DiffComps4.png',cv.IMREAD_GRAYSCALE),
-                    cv.imread('Test_images/NonArUco/Train/DiffComps5.png',cv.IMREAD_GRAYSCALE),
-                    cv.imread('Test_images/NonArUco/Train/DiffComps6.png',cv.IMREAD_GRAYSCALE),
-                    #cv.imread('Test_images/NonArUco/Train/DiffComps7.png',cv.IMREAD_GRAYSCALE),
-                    #cv.imread('Test_images/NonArUco/Train/DiffComps8.png',cv.IMREAD_GRAYSCALE),
-                    #cv.imread('Test_images/NonArUco/Train/DiffComps9.png',cv.IMREAD_GRAYSCALE),
-                    #cv.imread('Test_images/NonArUco/Train/DiffComps10.png',cv.IMREAD_GRAYSCALE),
-                    #cv.imread('Test_images/NonArUco/Train/DiffComps11.png',cv.IMREAD_GRAYSCALE),
+                    # Load ArUco images
+                    if ArUco_images == True:
+                        if check_angle == True:
+                            # The 'r' in 'root' and 'sorted' in front of '(os.listdir(root))'
+                            # was thanks to the help of AI
+                            root = r"Test_images\ArUco\Train\Angle"
+                        else:
+                            root = r"Test_images\ArUco\Train"
+                    
+                    # Load non ArUco images        
+                    else:
+                        if check_angle == True:
+                            root = r"Test_images\NonArUco\Train\Angle"
+                        else:
+                            root = r"Test_images\NonArUco\Train"
 
-                    # multiple of the same component type in one image
-                    #cv.imread('Test_images/NonArUco/Train/Multi1.png',cv.IMREAD_GRAYSCALE),
-                    #cv.imread('Test_images/NonArUco/Train/Multi2.png',cv.IMREAD_GRAYSCALE),
-                    #cv.imread('Test_images/NonArUco/Train/Multi3.png',cv.IMREAD_GRAYSCALE),
-                    #cv.imread('Test_images/NonArUco/Train/Multi4.png',cv.IMREAD_GRAYSCALE),
-                    #cv.imread('Test_images/NonArUco/Train/Multi5.png',cv.IMREAD_GRAYSCALE),
-
-                    # images of components sittin on the border of the image, to test the program's reaction
-                    #cv.imread('Test_images/NonArUco/Train/Border1.png',cv.IMREAD_GRAYSCALE),
-                    #cv.imread('Test_images/NonArUco/Train/Border2.png',cv.IMREAD_GRAYSCALE),
-                    #cv.imread('Test_images/NonArUco/Train/Border3.png',cv.IMREAD_GRAYSCALE),
-
-                    # image with components that are not in the query images
-                    #cv.imread('Test_images/NonArUco/Train/NonQuery.png',cv.IMREAD_GRAYSCALE)
-                ]
+                    train, train_name = load_images(root)
 
 
                 # find homography, and draw respective boxes
@@ -518,13 +566,14 @@ def main():
 
                     for j in range(len(train)):
                         if len(total_keypoints[i][j]) > 0:
-                            print(f"   Train image {j} data:")
+                            print(f"   Train image {train_name[j]} data:")
 
                             for k in range(len(total_keypoints[i][j])):
                                 print(f"      Component {k} data:")
                                 print(f"         number of keypoints = {(total_keypoints[i][j][k])}")
                                 print(f"         number of matches= {(total_matches[i][j][k])}")
                                 print(f"         number of good matches= {(total_good[i][j][k])}")
+                                print(f"         calculated angle= {total_angles[i][j][k]}")
 
                 print(f"Total time taken for entire program 1st time: {test_end - test_start} seconds")
                 print(f"Total time taken for this loop: {test_end - loop_start} seconds")  
