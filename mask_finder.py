@@ -27,11 +27,26 @@ import matplotlib.pyplot as plt
 [cv.imread('Test_images/Query/BB102.png',cv.IMREAD_GRAYSCALE), "BB102"] 
 """
 
-img1 = cv.imread('Test_images/ArUco/Query/BB79.png',cv.IMREAD_GRAYSCALE)   # queryImage
+img1 = cv.imread('Test_images/ArUco/Query/BB102.png',cv.IMREAD_GRAYSCALE)   # queryImage
 
 #Pyro and STEVS
 #__, img_upper = cv.threshold(img1, 200, 255, cv.THRESH_BINARY) 
 #__, img_lower = cv.threshold(img1, 70, 255, cv.THRESH_BINARY_INV) 
+
+#BB79 BB96
+# 160/ 0
+
+#BB97, BB84, 
+# 155 / 0
+
+#Standoff
+# 255/ 95
+
+# CurrShunt
+# 160/ 110
+
+# Break Resistor, BB102
+# 165 / 70
 
 #BB79, BB97, BB84, BB96
 #__, img_upper = cv.threshold(img1, 142, 255, cv.THRESH_BINARY) 
@@ -52,8 +67,8 @@ img1 = cv.imread('Test_images/ArUco/Query/BB79.png',cv.IMREAD_GRAYSCALE)   # que
 #####################################
 # Contour detection and bounding box
 #####################################
-__, img_upper = cv.threshold(img1, 142, 255, cv.THRESH_BINARY) #thresholding to create binary image
-__, img_lower = cv.threshold(img1, 0, 255, cv.THRESH_BINARY_INV) #thresholding to create binary image
+__, img_upper = cv.threshold(img1, 165, 255, cv.THRESH_BINARY) #thresholding to create binary image
+__, img_lower = cv.threshold(img1, 70, 255, cv.THRESH_BINARY_INV) #thresholding to create binary image
 img_mask = cv.bitwise_or(img_upper, img_lower)
 
 img1_masked = cv.bitwise_and(img1, img1, mask=img_mask)

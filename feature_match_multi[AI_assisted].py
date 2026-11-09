@@ -13,22 +13,24 @@ import pandas as pd
 MIN_INLIERS = 12      # Define this next to MIN_MATCH_COUNT; must be well above 4
 MIN_AREA_RATIO = 0.25 # Projected box area vs. original query box area
 MAX_AREA_RATIO = 4.0
-
 MIN_MATCH_COUNT = 10 # Minimum number of good matches before proceeding
 SPP = 2 # Second(s) per picture
 
-show_process = False # Set to True to show step by step how the program works
+show_process = True # Set to True to show step by step how the program works
 live_camera = False # Set to True to use live camera feed, False to use test images
-check_angle = False # Set to true to check angle of component relative to ArUco marker
-ArUco_images = False # Set to true use the ArUco train images
+check_angle = False # Set to True to check angle of component relative to ArUco marker
+ArUco_images = False # Set to True use the ArUco train images
+display_at_end = False # Set to True to display result image at the end of loop
+max_loop = 1 # Max number of loops before program ends
 
 #
 # Values to be altered for testing
 #
-sheet_name = ""
-Lowes_ratio = 0.7 # Lowe's ratio test (distance ratio to eliminate false matches), lower = more strict, higher = more lenient
-Match_num = 5 # Max number of same type components in a picture
-matches_k_value = 5 # Number of matches to compare against for Lowe's ratio test
+sheet_name = "BR_FLANN_Angle"
+image_limit = 0 # Set to 0 to load all images in folder
+Lowes_ratio = 0.75 # Lowe's ratio test (distance ratio to eliminate false matches), lower = more strict, higher = more lenient
+Match_num = 6 # Max number of same type components in a picture
+matches_k_value = 2 # Number of matches to compare against for Lowe's ratio test
 
 # STARTOF AI assisted coding - good parameters to alter to improve performance of 
 # feature finders and matchers used in query_init and matcher_func 
@@ -38,14 +40,14 @@ WTA_K_value = 3 # ORB parameter [Default = 2, higher = more accurate but slower]
 # ENDOF AI assisted coding
 HessThreshold = 400 # Hessian threshold for SURF [Default = 400]
 
-matcher_option = "Brute Force" # Feature matcher to be used
+matcher_option = "FLANN" # Feature matcher to be used
 """ 
 Matcher Options: 
     "Brute Force"
     "FLANN"
 """
 
-detector_option = "SIFT" # Feature detector to be used
+detector_option = "BRISK" # Feature detector to be used
 """ 
 Detector Options: 
     "SIFT"
@@ -75,16 +77,15 @@ def query_init():
         query = [
             [cv.imread('Test_images/ArUco/Query/Pyros.png',cv.IMREAD_GRAYSCALE), "Pyros", 200, 70],
             [cv.imread('Test_images/ArUco/Query/STEV.png',cv.IMREAD_GRAYSCALE), "STEV", 200, 70],
-            [cv.imread('Test_images/ArUco/Query/BB79.png',cv.IMREAD_GRAYSCALE), "BB79", 142, 0],
-            [cv.imread('Test_images/ArUco/Query/BB97.png',cv.IMREAD_GRAYSCALE), "BB97", 142, 0],
-            [cv.imread('Test_images/ArUco/Query/BB84.png',cv.IMREAD_GRAYSCALE), "BB84", 142, 0],
-            [cv.imread('Test_images/ArUco/Query/BB96.png',cv.IMREAD_GRAYSCALE), "BB96", 142, 0],
-            [cv.imread('Test_images/ArUco/Query/BB61.png',cv.IMREAD_GRAYSCALE), "BB61", 155, 70],
+            [cv.imread('Test_images/ArUco/Query/BB79.png',cv.IMREAD_GRAYSCALE), "BB79", 160, 0],
+            [cv.imread('Test_images/ArUco/Query/BB97.png',cv.IMREAD_GRAYSCALE), "BB97", 155, 0],
+            [cv.imread('Test_images/ArUco/Query/BB84.png',cv.IMREAD_GRAYSCALE), "BB84", 155, 0],
+            [cv.imread('Test_images/ArUco/Query/BB96.png',cv.IMREAD_GRAYSCALE), "BB96", 169, 0],
             [cv.imread('Test_images/ArUco/Query/BB82.png',cv.IMREAD_GRAYSCALE), "BB82", 155, 70],
-            [cv.imread('Test_images/ArUco/Query/Standoff.png',cv.IMREAD_GRAYSCALE), "Standoff", 155, 95],
-            [cv.imread('Test_images/ArUco/Query/CurrShunt.png',cv.IMREAD_GRAYSCALE), "Current Shunt", 155, 103],
-            [cv.imread('Test_images/ArUco/Query/BreakResistor.png',cv.IMREAD_GRAYSCALE), "Break Resistor", 155, 70],
-            [cv.imread('Test_images/ArUco/Query/BB102.png',cv.IMREAD_GRAYSCALE), "BB102", 155, 70]
+            [cv.imread('Test_images/ArUco/Query/Standoff.png',cv.IMREAD_GRAYSCALE), "Standoff", 255, 95],
+            [cv.imread('Test_images/ArUco/Query/CurrShunt.png',cv.IMREAD_GRAYSCALE), "Current Shunt", 160, 110],
+            [cv.imread('Test_images/ArUco/Query/BreakResistor.png',cv.IMREAD_GRAYSCALE), "Break Resistor", 165, 70],
+            [cv.imread('Test_images/ArUco/Query/BB102.png',cv.IMREAD_GRAYSCALE), "BB102", 165, 70]
         ]
     else:
         query = [
@@ -245,26 +246,7 @@ def image_results(train, query, matched_boxes, cx, cy):
     display_image = []
     for j in range(len(train)):
         display_image.append(train[j].copy()) 
-    
-    # STARTOF AI assisted coding, displaying images on a grid using opencv
-    # instead of matplotlib which is what was used prior.       
-    """# TILE_W, TILE_H = 500, 250  # Standard size for each grid cell
-    TILE_W, TILE_H = round(1530 / len(train)), round(830 / len(query))  # Size dependent on the amount of query and train images
-    grid_rows = []
 
-    for i in range(len(query)):
-        row_imgs = []
-        for j in range(len(train)):
-            # Resize each result so all tiles have identical dimensions
-            row_imgs.append(cv.resize(imgResults[i][j], (TILE_W, TILE_H)))
-            
-        # Stack all train columns horizontally for this query row
-        grid_rows.append(np.hstack(row_imgs))
-
-    # Stack all query rows vertically into one master grid image
-    final_grid = np.vstack(grid_rows)
-    cv.imshow("Homography Grid", final_grid)"""
-    # ENDOF AI assisted coding
 
     # Checks that matched_boxes and centerpoints are not empty, which would cause a crash
     if len(matched_boxes) != 0 and len(cx) != 0 and len(cy) != 0:
@@ -281,18 +263,17 @@ def image_results(train, query, matched_boxes, cx, cy):
                                     (cx[i][j][cntr], 
                                     cy[i][j][cntr]), 20, (255, 0, 0), -1)
 
-        for i in range(3):
-            for j in range(2):
-                plt.subplot(2, 3, i * 2 + j + 1)
-                plt.imshow(display_image[i * 2 + j], cmap='gray')
-                plt.axis('off')
+        #for i in range(3):
+        #    for j in range(2):
+        #        plt.subplot(2, 3, i * 2 + j + 1)
+        #    plt.imshow(display_image[i * 2 + j], cmap='gray')
+        #    plt.axis('off')
                
-    # Plot display images on a grid dependent on the amount of query and train images
-    #for i in range(len(query)):
-    #    for j in range(len(train)):
-    #        plt.subplot(len(query), len(train), i * len(train) + j + 1)
-    #        plt.imshow(display_image[j], cmap='gray')
-    #        plt.axis('off')
+        # Plot display images on a grid
+        for j in range(len(train)):
+            plt.subplot(1, len(train), j + 1)
+            plt.imshow(display_image[j], cmap='gray')
+            plt.axis('off')
 
     #plt.imshow(display_image, cmap='gray')
     plt.show()
@@ -483,8 +464,6 @@ def get_angle(dst, train_copy):
         angle_rad_x = l2.angle_between(l3)
         angle_deg_x = math.degrees(angle_rad_x)
 
-        print(f"angle y: {angle_deg_y}")
-        print(f"angle x: {angle_deg_x}")
 
         # Uses the axes that the side of the component is closest 
         # to - This is because in actual application rotation
@@ -507,8 +486,6 @@ def get_angle(dst, train_copy):
             else:
                 angle_deg = angle_deg_x
 
-    print(angle_deg)
-
     return angle_deg
 
 # Load images from the specified folder
@@ -520,10 +497,17 @@ def get_angle(dst, train_copy):
 def load_images(root):
     train = []
     train_name = []
+    numberOfImages = []
     
     fnames = sorted(os.listdir(root))
-    
-    for i in range(len(fnames)):
+
+    # check if image limit is on
+    if image_limit != 0:
+        numberOfImages = image_limit
+    else:
+        numberOfImages = len(fnames)
+
+    for i in range(numberOfImages):
         filepath = os.path.join(root,fnames[i])
 
         # STARTOF AI assisted coding - How to skip folder
@@ -606,7 +590,16 @@ def main():
 
                 # train images / camera feed
                 if (live_camera == True):
-                    train = [frameCV]
+                    #train = [frameCV]
+                    train = [
+                        cv.imread('Test_images/NonArUco/Train/Multi1.png',cv.IMREAD_GRAYSCALE),
+                        cv.imread('Test_images/NonArUco/Train/Multi2.png',cv.IMREAD_GRAYSCALE),
+                        cv.imread('Test_images/NonArUco/Train/Multi3.png',cv.IMREAD_GRAYSCALE),
+                        cv.imread('Test_images/NonArUco/Train/Multi4.png',cv.IMREAD_GRAYSCALE),
+                    ]
+                    train_name = [
+                        "Multi1", "Multi2", "Multi3", "Multi4"
+                    ]
 
                 else:
                     # Load ArUco images
@@ -643,9 +636,10 @@ def main():
                 # ENDOF AI generated code
 
                 # display images on a grid
-                #image_results(train, query, matched_boxes, cx, cy)
+                if display_at_end == True:
+                    image_results(train, query, matched_boxes, cx, cy)
 
-                if loop_number >= 3:   # or whatever condition ends your test
+                if loop_number >= max_loop:   # or whatever condition ends your test
                     break
 
                 if cv.waitKey(1) == ord('q'):
@@ -655,7 +649,7 @@ def main():
                 all_rows,
                 sheet_name=sheet_name,
                 settings={"Lowes_ratio": Lowes_ratio,
-                        "MIN_MATCH_COUNT": MIN_MATCH_COUNT, "Match_num": Match_num},
+                        "MIN_MATCH_COUNT": MIN_MATCH_COUNT, "Match_num": Match_num, "image_limit": image_limit},
             )
 
 
