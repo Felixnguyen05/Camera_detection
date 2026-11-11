@@ -3,7 +3,7 @@
   "marker_size_mm": 20.0,
   "components": [
     {
-      "marker_id": 277,
+      "marker_id": 360,
       "component_id": "SPK-001",
       "class_id": 0,
       "name": "Speaker",
@@ -12,7 +12,7 @@
       "footprint_mm": [60, 35]
     },
     {
-      "marker_id": 628,
+      "marker_id": 506,
       "component_id": "MOD-001",
       "class_id": 1,
       "name": "Electronic Module",
