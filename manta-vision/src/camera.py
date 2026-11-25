@@ -9,12 +9,20 @@ from vmbpy import (
 
 class MantaCamera:
     def __init__(self, camera_id=None):
+        """Store an optional Allied Vision camera ID and empty SDK handles.
+
+        If no ID is given, the first discovered camera is used."""
         self.camera_id = camera_id
         self.vmb = None
         self.cam = None
 
     # Connect camera
     def __enter__(self):
+        """Open the Vimba X system and a compatible camera.
+
+        Selects an available pixel format (Mono8 preferred for ArUco),
+        prints device information, then returns ``self``. On failure,
+        releases acquired resources before raising the exception."""
         self.vmb = VmbSystem.get_instance()
         self.vmb.__enter__()
 
@@ -88,6 +96,14 @@ class MantaCamera:
     def configure(self, exposure_us=None, gain=None):
 
         # Disable hardware trigger
+        """Configure free-running acquisition and optional exposure/gain.
+
+        Args:
+            exposure_us: Manual exposure time in microseconds; None to skip.
+            gain: Manual camera gain; None to leave unchanged.
+
+        Feature names vary between camera/SDK versions, so unsupported
+        settings emit warnings rather than always stopping execution."""
         try:
             self.cam.TriggerMode.set("Off")
             print("[CAMERA] Trigger disabled")
@@ -175,6 +191,11 @@ class MantaCamera:
     # Read frame
     def read(self):
 
+        """Grab a single frame synchronously and return a BGR image.
+
+        This method is a legacy convenience path. The current ArUco
+        ``main.py`` uses async ``start_streaming`` instead, so ``read()``
+        is not invoked by the main recognition loop."""
         frame = self.cam.get_frame(
             timeout_ms=3000
         )
@@ -212,6 +233,10 @@ class MantaCamera:
         exc_value,
         traceback
     ):
+        """Release the camera and Vimba X SDK handles on exit.
+
+        Called automatically by ``with MantaCamera(...)`` even if an
+        exception occurs inside the block."""
         try:
             if self.cam is not None:
                 self.cam.__exit__(

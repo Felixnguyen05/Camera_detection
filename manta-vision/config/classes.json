@@ -1,0 +1,6 @@
+{
+  "classes": [
+    {"class_id": 0, "name": "Speaker", "orientation_reference": "long mounting-tab axis; 180-degree ambiguity"},
+    {"class_id": 1, "name": "Electronic Module", "orientation_reference": "principal shape axis; confirm actual pick direction"}
+  ]
+}

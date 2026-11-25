@@ -1,0 +1,7 @@
+# src/train.py regenerates 'path' as an ABSOLUTE path on your machine.
+path: .
+train: images/train
+val: images/val
+names:
+  0: Speaker
+  1: Electronic Module

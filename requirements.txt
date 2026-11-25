@@ -5,11 +5,11 @@ vmbpy
 # Computer Vision
 opencv-python
 opencv-contrib-python>=4.8
-numpy
+numpy>=1.26
 
 # Configuration
-PyYAML
+PyYAML>=6.0
 
 # Testing
 pytest
-ultralytics>=8.3
+ultralytics>=8.4

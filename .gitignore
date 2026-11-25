@@ -1,4 +1,9 @@
 .venv/
 __pycache__/
 *.pyc
-.pytest_cache/
+models/*.pt
+runs/
+output/
+dataset/images/**/*.png
+dataset/images/**/*.jpg
+dataset/labels/**/*.txt
